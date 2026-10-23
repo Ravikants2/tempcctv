@@ -101,26 +101,26 @@ async function apiRequest<T>(
   return result;
 }
 
-export async function restoreSession(): Promise<User | null> {
+export async function restoreSession(): Promise<{ user: User; data: AppData } | null> {
   clearLegacyClientData();
   if (!getSessionToken()) return null;
   try {
-    const result = await apiRequest<{ user: User }>('/api/auth/session');
-    return result.user;
+    const result = await apiRequest<{ user: User; data: Partial<AppData> }>('/api/auth/session');
+    return { user: result.user, data: normalizeAppData(result.data) };
   } catch (error) {
     if ((error as Error & { status?: number }).status === 401) return null;
     throw error;
   }
 }
 
-export async function loginUser(email: string, password: string): Promise<User> {
-  const result = await apiRequest<{ token: string; user: User }>(
+export async function loginUser(email: string, password: string): Promise<{ user: User; data: AppData }> {
+  const result = await apiRequest<{ token: string; user: User; data: Partial<AppData> }>(
     '/api/auth/login',
     { method: 'POST', body: JSON.stringify({ email, password }) },
     false
   );
   sessionStorage.setItem(SESSION_KEY, result.token);
-  return result.user;
+  return { user: result.user, data: normalizeAppData(result.data) };
 }
 
 export async function logoutUser(): Promise<void> {

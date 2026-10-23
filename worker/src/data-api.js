@@ -288,6 +288,14 @@ function publicDatabase(database) {
   };
 }
 
+function visibleDatabaseFor(user, database) {
+  const visible = publicDatabase(database);
+  if (!isSuperAdmin(user)) {
+    visible.auditLogs = visible.auditLogs.filter((entry) => entry.userId === user.id);
+  }
+  return visible;
+}
+
 function apiUser(user) {
   return publicUser(user);
 }
@@ -500,13 +508,20 @@ async function handleApiRoute(request, env, origin) {
       auditEntry(user.id, 'LOGIN', 'User', user.id, undefined, { email: user.email }),
     ]);
     loaded = await writeDatabase(env, loaded, loaded.data, 'auth: user sign-in');
-    return jsonResponse({ token: await createSession(user, env), user: apiUser(user) }, 200, origin);
+    return jsonResponse({
+      token: await createSession(user, env),
+      user: apiUser(user),
+      data: visibleDatabaseFor(user, loaded.data),
+    }, 200, origin);
   }
 
   if (method === 'GET' && path === '/api/auth/session') {
     const loaded = await ensureBootstrapAdmin(await readDatabase(env), env);
     const user = await authenticateRequest(request, env, loaded);
-    return jsonResponse({ user: apiUser(user) }, 200, origin);
+    return jsonResponse({
+      user: apiUser(user),
+      data: visibleDatabaseFor(user, loaded.data),
+    }, 200, origin);
   }
 
   if (method === 'POST' && path === '/api/auth/logout') {
@@ -524,11 +539,7 @@ async function handleApiRoute(request, env, origin) {
   const actor = await authenticateRequest(request, env, loaded);
 
   if (method === 'GET' && path === '/api/data') {
-    const visible = publicDatabase(loaded.data);
-    if (!isSuperAdmin(actor)) {
-      visible.auditLogs = visible.auditLogs.filter((entry) => entry.userId === actor.id);
-    }
-    return jsonResponse(visible, 200, origin);
+    return jsonResponse(visibleDatabaseFor(actor, loaded.data), 200, origin);
   }
 
   if (method === 'POST' && path === '/api/users') {

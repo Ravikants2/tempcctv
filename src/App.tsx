@@ -3,7 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { FilterProvider } from './context/FilterContext';
 import { Layout } from './components/layout/Layout';
-import { Spinner } from './components/ui/index';
+import { Loader2 } from 'lucide-react';
 import LoginPage from './pages/LoginPage';
 import RequirementsPage from './pages/requirements/RequirementsPage';
 import VendorsPage from './pages/vendors/VendorsPage';
@@ -19,6 +19,27 @@ import ChatPage from './pages/chat/ChatPage';
 import UserManagementPage from './pages/users/UserManagementPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 
+function WorkspaceLoading() {
+  return (
+    <main className="relative grid min-h-screen place-items-center overflow-hidden bg-slate-950 px-6 text-white">
+      <div aria-hidden="true" className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_top,_rgba(37,99,235,0.22),_transparent_56%)]" />
+      <section className="relative flex max-w-sm flex-col items-center text-center" role="status" aria-live="polite">
+        <span className="mb-7 grid h-16 w-16 place-items-center rounded-2xl border border-white/10 bg-white/[0.06] shadow-2xl shadow-blue-950/50">
+          <Loader2 className="animate-spin text-sky-300" size={27} />
+        </span>
+        <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-300">iON CCTV workspace</p>
+        <h1 className="mt-3 text-xl font-semibold tracking-tight">Preparing your workspace</h1>
+        <p className="mt-2 text-sm leading-6 text-slate-400">
+          Verifying your secure session and loading the latest venue records.
+        </p>
+        <div className="mt-8 h-1 w-40 overflow-hidden rounded-full bg-white/10">
+          <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-sky-400 to-blue-500" />
+        </div>
+      </section>
+    </main>
+  );
+}
+
 function ProtectedRoute({ children, viewerAllowed = false, zonalAllowed = false, approvalAllowed = false, permission }: {
   children: React.ReactNode;
   viewerAllowed?: boolean;
@@ -27,14 +48,7 @@ function ProtectedRoute({ children, viewerAllowed = false, zonalAllowed = false,
   permission?: string;
 }) {
   const { currentUser, syncStatus, can } = useAuth();
-  if (syncStatus === 'loading') {
-    return (
-      <div className="min-h-screen bg-[#0d1b3e] flex items-center justify-center flex-col gap-4">
-        <Spinner />
-        <p className="text-white/60 text-sm">Loading data from GitHub…</p>
-      </div>
-    );
-  }
+  if (syncStatus === 'loading') return <WorkspaceLoading />;
   if (!currentUser) return <Navigate to="/login" replace />;
   if (currentUser.role === 'viewer' && !viewerAllowed) {
     return <Navigate to="/dashboard/executive" replace />;
@@ -63,14 +77,7 @@ function ProtectedRoute({ children, viewerAllowed = false, zonalAllowed = false,
 function AppRoutes() {
   const { currentUser, syncStatus, can } = useAuth();
 
-  if (syncStatus === 'loading') {
-    return (
-      <div className="min-h-screen bg-[#0d1b3e] flex items-center justify-center flex-col gap-4">
-        <Spinner />
-        <p className="text-white/60 text-sm">Loading data from GitHub…</p>
-      </div>
-    );
-  }
+  if (syncStatus === 'loading') return <WorkspaceLoading />;
 
   const landingPath = currentUser
     ? [

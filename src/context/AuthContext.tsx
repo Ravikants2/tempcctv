@@ -86,15 +86,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   // Load data on mount
   useEffect(() => {
     setSyncStatus('loading');
-    restoreSession().then(async user => {
-      if (!user) {
+    restoreSession().then(session => {
+      if (!session) {
         setData(getInitialData());
         setSyncStatus('idle');
         return;
       }
-      setCurrentUser(user);
-      const loaded = await loadData();
-      setData(loaded);
+      setCurrentUser(session.user);
+      setData(session.data);
       setSyncStatus('idle');
     }).catch(e => {
       setSyncStatus('error');
@@ -168,11 +167,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     try {
-      const user = await loginUser(email, password);
+      const session = await loginUser(email, password);
       setSyncStatus('loading');
-      const loaded = await loadData();
-      setData(loaded);
-      setCurrentUser(user);
+      setData(session.data);
+      setCurrentUser(session.user);
       setSyncError('');
       setSyncStatus('idle');
       return true;

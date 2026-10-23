@@ -155,8 +155,12 @@ describe('secure GitHub data API', () => {
       origin,
       [origin]
     );
-    const { token } = await loginResponse.json();
+    const loginBody = await loginResponse.json();
     expect(loginResponse.status).toBe(200);
+    const { token } = loginBody;
+    expect(loginBody.data.users[0]).not.toHaveProperty('passwordHash');
+    expect(loginBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+    expect(loginBody.data).not.toHaveProperty('authVersion');
 
     const dataResponse = await handleDataApi(
       request('/api/data', 'GET', undefined, token),
@@ -168,6 +172,59 @@ describe('secure GitHub data API', () => {
     expect(dataResponse.status).toBe(200);
     expect(visibleData.users[0]).not.toHaveProperty('passwordHash');
     expect(visibleData.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+
+    const sessionResponse = await handleDataApi(
+      request('/api/auth/session', 'GET', undefined, token),
+      env,
+      origin,
+      [origin]
+    );
+    const sessionBody = await sessionResponse.json();
+    expect(sessionResponse.status).toBe(200);
+    expect(sessionBody.data.users[0]).not.toHaveProperty('passwordHash');
+    expect(sessionBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+  });
+
+  it('limits auth response audit logs to the signed-in non-admin user', async () => {
+    const user = {
+      id: 'user-1',
+      name: 'Test User',
+      email: 'user@example.com',
+      role: 'zonal_user',
+      passwordHash: await dataApiInternals.derivePasswordHash('Correct horse battery staple!'),
+      tokenVersion: 0,
+    };
+    const database = {
+      ...emptyDatabase(),
+      authVersion: 1,
+      users: [
+        user,
+        {
+          id: 'admin-1',
+          name: 'Test Admin',
+          email: 'admin@example.com',
+          role: 'super_admin',
+          passwordHash: user.passwordHash,
+          tokenVersion: 0,
+        },
+      ],
+      auditLogs: [
+        { id: 'own-log', userId: user.id, action: 'UPDATE' },
+        { id: 'other-log', userId: 'admin-1', action: 'UPDATE' },
+      ],
+    };
+    createGitHubMock(database);
+    const token = await dataApiInternals.createSession(user, env);
+    const response = await handleDataApi(
+      request('/api/auth/session', 'GET', undefined, token),
+      env,
+      origin,
+      [origin]
+    );
+    const body = await response.json();
+
+    expect(response.status).toBe(200);
+    expect(body.data.auditLogs).toEqual([expect.objectContaining({ id: 'own-log', userId: user.id })]);
   });
 
   it('preserves authentication metadata and credentials when application data is saved', async () => {
