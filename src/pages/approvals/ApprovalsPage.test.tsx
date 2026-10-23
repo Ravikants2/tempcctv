@@ -213,6 +213,37 @@ describe('ApprovalsPage', () => {
     expect(document.querySelector('[data-approval-queue] table')).toBeNull();
   });
 
+  it('opens date-wise scheduled candidates from the per-candidate cost', () => {
+    mockData = {
+      ...initialData,
+      examDates: [
+        ...initialData.examDates,
+        { id: 'date-2', installationRecordId: 'installation-1', examDate: '2026-02-02', scheduledCandidates: 300 },
+      ],
+    };
+    mockAuthData(mockData);
+    render(<ApprovalsPage />);
+
+    fireEvent.click(screen.getByRole('button', { name: 'Per candidate cost details for TC Code TC-100' }));
+
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByRole('heading', { name: 'Date-wise candidate schedule · TC Code TC-100' })).toBeInTheDocument();
+    expect(dialog.getByText('01/02/2026')).toBeInTheDocument();
+    expect(dialog.getByText('02/02/2026')).toBeInTheDocument();
+    expect(dialog.getByText('Total scheduled candidates').parentElement).toHaveTextContent('800');
+  });
+
+  it('opens venue history from the TC name and removes the duplicate detail section below approvals', () => {
+    render(<ApprovalsPage />);
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'View venue history for Test Venue, TC Code TC-100',
+    }));
+
+    expect(screen.getByRole('heading', { name: 'Venue cost history · TC Code TC-100' })).toBeInTheDocument();
+    expect(screen.queryByText('Exam-wise temporary CCTV use and cost')).not.toBeInTheDocument();
+  });
+
   it('keeps the installation quote visible when exam-date details are missing', () => {
     mockData = { ...initialData, examDates: [] };
     mockAuthData(mockData);
@@ -251,8 +282,7 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    expect(screen.getByText('6 days', { selector: 'p' })).toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: /View history/ }));
+    fireEvent.click(screen.getByRole('button', { name: 'View history for TC Code TC-100' }));
 
     const details = within(screen.getByRole('dialog'));
     expect(details.getByText('Total recorded cost till now').parentElement).toHaveTextContent('₹20,500');
@@ -380,8 +410,8 @@ describe('ApprovalsPage', () => {
     render(<ApprovalsPage />);
 
     fireEvent.change(screen.getByLabelText('Zone'), { target: { value: 'West 1' } });
-    expect(screen.getByRole('button', { name: /TC Code TC-200/ })).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: /TC Code TC-100/ })).not.toBeInTheDocument();
+    expect(screen.getByRole('article', { name: 'Approval details for TC Code TC-200' })).toBeInTheDocument();
+    expect(screen.queryByRole('article', { name: 'Approval details for TC Code TC-100' })).not.toBeInTheDocument();
   });
 
   it('shows approvals for the logged-in Head of Enablement level', () => {

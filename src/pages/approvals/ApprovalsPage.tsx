@@ -37,12 +37,6 @@ function projectKey(requirement: { clientName: string; examName: string }) {
     .map(value => value.trim().toLocaleLowerCase()).join('\u0000');
 }
 
-function venueProjectKey(requirement: {
-  zone: string; state: string; city: string; tcCode: string; clientName: string; examName: string;
-}) {
-  return `${venueKey(requirement)}\u0000${projectKey(requirement)}`;
-}
-
 export default function ApprovalsPage() {
   const { data, updateData, addAuditLog, currentUser, can } = useAuth();
   const [clientFilter, setClientFilter] = useState('');
@@ -50,11 +44,11 @@ export default function ApprovalsPage() {
   const [zoneFilter, setZoneFilter] = useState('');
   const [tcCodeFilter, setTcCodeFilter] = useState('');
   const [page, setPage] = useState(1);
-  const [selectedId, setSelectedId] = useState('');
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [remarksByRecord, setRemarksByRecord] = useState<Record<string, string>>({});
   const [exceptionByRecord, setExceptionByRecord] = useState<Record<string, boolean>>({});
   const [detailRecordId, setDetailRecordId] = useState('');
+  const [candidateBreakdownRecordId, setCandidateBreakdownRecordId] = useState('');
   const [alertRecordId, setAlertRecordId] = useState('');
   const [approvalDrilldown, setApprovalDrilldown] = useState<'approved' | 'pending' | 'returned' | null>(null);
   const [approvalDrilldownClient, setApprovalDrilldownClient] = useState('');
@@ -92,16 +86,10 @@ export default function ApprovalsPage() {
       candidatesByRecord.set(record.id, latestRevision?.totalCandidates ??
         (schedulesByRecord.get(record.id) || []).reduce((total, schedule) => total + schedule.scheduledCandidates, 0));
     });
-    const venueMetrics = new Map<string, { cost: number; candidates: number; days: Set<string> }>();
     const projectRecords = new Map<string, Array<{ id: string; cost: number; candidates: number; perCandidate: number }>>();
     data.installations.forEach(record => {
       const requirement = requirementsById.get(record.requirementId);
       if (!requirement) return;
-      const scope = venueProjectKey(requirement);
-      const metrics = venueMetrics.get(scope) || { cost: 0, candidates: 0, days: new Set<string>() };
-      metrics.cost += record.localVendorCost;
-      metrics.candidates += candidatesByRecord.get(record.id) || 0;
-      venueMetrics.set(scope, metrics);
       const key = projectKey(requirement);
       const candidates = candidatesByRecord.get(record.id) || 0;
       if (candidates > 0) {
@@ -110,13 +98,7 @@ export default function ApprovalsPage() {
         projectRecords.set(key, peers);
       }
     });
-    data.examDates.forEach(schedule => {
-      const record = installationsById.get(schedule.installationRecordId);
-      const requirement = record && requirementsById.get(record.requirementId);
-      if (!requirement) return;
-      venueMetrics.get(venueProjectKey(requirement))?.days.add(normalizeExamDate(schedule.examDate) || schedule.examDate);
-    });
-    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, candidatesByRecord, venueMetrics, projectRecords, installationsById, approvalEventsByRecord };
+    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, candidatesByRecord, projectRecords, installationsById, approvalEventsByRecord };
   }, [data]);
 
   const allowedStages: ApprovalStage[] = [
@@ -159,47 +141,6 @@ export default function ApprovalsPage() {
   const allFilteredSelected = filteredQueue.length > 0 && selectedQueue.length === filteredQueue.length;
   const waitingRecords = data.installations.filter(record => (record.approvalStatus || 'pending') === 'pending');
   const returnedRecords = data.installations.filter(record => record.approvalStatus === 'returned');
-  const selectedRecord = filteredQueue.find(record => record.id === selectedId) || pageQueue[0];
-  const selectedRequirement = selectedRecord
-    ? indexes.requirementsById.get(selectedRecord.requirementId)
-    : undefined;
-  const selectedStage = selectedRecord?.approvalStage || 'surveillance_head';
-  const selectedVendor = selectedRecord
-    ? indexes.vendorsById.get(selectedRecord.vendorId)
-    : undefined;
-  const venueRecords = useMemo(() => {
-    if (!selectedRequirement) return [];
-    return data.installations.flatMap(record => {
-      const requirement = indexes.requirementsById.get(record.requirementId);
-      return requirement && venueKey(requirement) === venueKey(selectedRequirement)
-        ? [{ record, requirement }]
-        : [];
-    }).sort((left, right) =>
-      left.requirement.examName.localeCompare(right.requirement.examName) ||
-      left.record.createdAt.localeCompare(right.record.createdAt)
-    );
-  }, [data.installations, indexes.requirementsById, selectedRequirement]);
-  const currentExamVenueRecords = selectedRequirement
-    ? venueRecords.filter(item =>
-      item.requirement.clientName === selectedRequirement.clientName &&
-      item.requirement.examName === selectedRequirement.examName)
-    : [];
-  const venueSchedule = currentExamVenueRecords.map(({ record, requirement }) => ({
-    record,
-    requirement,
-    dates: [...new Set((indexes.schedulesByRecord.get(record.id) || [])
-      .map(schedule => normalizeExamDate(schedule.examDate) || schedule.examDate))]
-      .sort((left, right) => left.localeCompare(right)),
-  }));
-  const examVenueMetrics = selectedRequirement
-    ? indexes.venueMetrics.get(venueProjectKey(selectedRequirement))
-    : undefined;
-  const totalVenueCost = examVenueMetrics?.cost || 0;
-  const totalVenueCandidates = examVenueMetrics?.candidates || 0;
-  const temporaryCctvDays = examVenueMetrics?.days.size || 0;
-  const totalCostPerCandidate = totalVenueCandidates > 0
-    ? totalVenueCost / totalVenueCandidates
-    : 0;
   const createCurrentQuoteSnapshot = (record: InstallationRecord): QuoteRevision => {
     const schedule = indexes.schedulesByRecord.get(record.id) || [];
     return {
@@ -222,11 +163,12 @@ export default function ApprovalsPage() {
     };
   };
 
-  const currentApprovalEvents = selectedRecord
-    ? data.approvalEvents
-      .filter(event => event.installationRecordId === selectedRecord.id)
-      .sort((left, right) => left.createdAt.localeCompare(right.createdAt))
-    : [];
+  const candidateBreakdownRecord = candidateBreakdownRecordId
+    ? indexes.installationsById.get(candidateBreakdownRecordId)
+    : undefined;
+  const candidateBreakdownRequirement = candidateBreakdownRecord
+    ? indexes.requirementsById.get(candidateBreakdownRecord.requirementId)
+    : undefined;
 
   const handleDecision = (record: InstallationRecord, action: 'approved' | 'sent_back') => {
     const requirement = indexes.requirementsById.get(record.requirementId);
@@ -299,7 +241,6 @@ export default function ApprovalsPage() {
     });
     setRemarksByRecord(previous => ({ ...previous, [record.id]: '' }));
     setExceptionByRecord(previous => ({ ...previous, [record.id]: false }));
-    setSelectedId('');
     setSelectedIds(previous => previous.filter(id => id !== record.id));
   };
 
@@ -403,7 +344,6 @@ export default function ApprovalsPage() {
       return next;
     });
     setSelectedIds([]);
-    setSelectedId('');
     setAlert({
       type: 'success',
       message: `${events.length} venue${events.length === 1 ? '' : 's'} approved${skipped.length > 0 ? `; ${skipped.length} skipped` : ''}.`,
@@ -559,25 +499,21 @@ export default function ApprovalsPage() {
             <Select label="Client Name" value={clientFilter} onChange={event => {
               setClientFilter(event.target.value);
               setExamFilter('');
-              setSelectedId('');
               setSelectedIds([]);
               setPage(1);
             }} options={clientOptions.map(client => ({ value: client, label: client }))} placeholder="Select client" />
             <Select label="Exam Name" value={examFilter} onChange={event => {
               setExamFilter(event.target.value);
-              setSelectedId('');
               setSelectedIds([]);
               setPage(1);
             }} options={examOptions.map(exam => ({ value: exam, label: exam }))} placeholder="Select exam" disabled={!clientFilter} />
             <Select label="Zone" value={zoneFilter} onChange={event => {
               setZoneFilter(event.target.value);
-              setSelectedId('');
               setSelectedIds([]);
               setPage(1);
             }} options={zoneOptions.map(zone => ({ value: zone, label: zone }))} placeholder="All zones" />
             <Input label="TC Code" value={tcCodeFilter} onChange={event => {
               setTcCodeFilter(event.target.value.replace(/\D/g, ''));
-              setSelectedId('');
               setSelectedIds([]);
               setPage(1);
             }} inputMode="numeric" pattern="[0-9]*" placeholder="Numbers only" />
@@ -604,7 +540,7 @@ export default function ApprovalsPage() {
                 </Button>
               </div>
             </div>
-            <div className="space-y-4 p-3 sm:p-4">
+            <div className="space-y-3 p-3 sm:p-4">
               <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl bg-slate-50 px-3 py-2.5">
                 <label className="flex items-center gap-2 text-sm font-medium text-slate-700">
                   <input aria-label="Select all matching TC venues" type="checkbox"
@@ -623,11 +559,24 @@ export default function ApprovalsPage() {
                 )}
               </div>
 
+              <div aria-hidden="true" className="hidden rounded-t-xl bg-slate-800 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-white xl:grid xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)] xl:gap-2">
+                <span />
+                <span>Zone</span>
+                <span>State</span>
+                <span>TC code / history</span>
+                <span>TC name</span>
+                <span>Exam date</span>
+                <span>Vendor</span>
+                <span>Installation cost</span>
+                <span>Per candidate</span>
+                <span>Approver remarks</span>
+                <span>Decision</span>
+              </div>
+
               {pageQueue.map(record => {
                 const requirement = indexes.requirementsById.get(record.requirementId);
                 if (!requirement) return null;
                 const vendorName = indexes.vendorsById.get(record.vendorId)?.vendorName || 'Vendor unavailable';
-                const active = record.id === (selectedRecord?.id || selectedId);
                 const recordRevisionHistory = indexes.revisionsByRecord.get(record.id) || [];
                 const recordPreviousRevision = recordRevisionHistory.length > 1
                   ? recordRevisionHistory[recordRevisionHistory.length - 2]
@@ -638,11 +587,12 @@ export default function ApprovalsPage() {
                   indexes.candidatesByRecord.get(record.id) || 0,
                   (indexes.projectRecords.get(projectKey(requirement)) || []).filter(item => item.id !== record.id)
                 );
-                const days = indexes.venueMetrics.get(venueProjectKey(requirement))?.days.size || 0;
                 const candidates = indexes.candidatesByRecord.get(record.id) || 0;
-                const examDates = [...new Set((indexes.schedulesByRecord.get(record.id) || [])
+                const schedules = indexes.schedulesByRecord.get(record.id) || [];
+                const examDates = [...new Set(schedules
                   .map(schedule => normalizeExamDate(schedule.examDate) || schedule.examDate))]
                   .sort((left, right) => left.localeCompare(right));
+                const perCandidate = candidates > 0 ? record.localVendorCost / candidates : undefined;
                 const canApprove = (record.approvalStage || 'surveillance_head') === 'surveillance_head'
                   ? can('approve_surveillance')
                   : can('approve_enablement');
@@ -650,124 +600,122 @@ export default function ApprovalsPage() {
                 return (
                   <article key={record.id} data-approval-card
                     aria-label={`Approval details for TC Code ${requirement.tcCode}`}
-                    className={`min-w-0 overflow-hidden rounded-2xl border bg-white shadow-sm transition ${
-                      active ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
-                    } ${isSelected ? 'bg-blue-50/40' : ''}`}>
-                    <div className="flex min-w-0 flex-wrap items-start justify-between gap-3 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-white px-4 py-4 sm:px-5">
-                      <div className="flex min-w-0 items-start gap-3">
-                        <input aria-label={`Select TC Code ${requirement.tcCode}`} type="checkbox"
-                          checked={isSelected}
-                          disabled={!clientFilter || !examFilter}
-                          onChange={event => setSelectedIds(previous => event.target.checked
-                            ? [...new Set([...previous, record.id])]
-                            : previous.filter(id => id !== record.id))}
-                          className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
-                        <div className="min-w-0">
-                          <button type="button" onClick={() => {
-                            setSelectedId(record.id);
-                            setAlert(null);
-                          }} className="font-mono text-xs font-bold text-blue-700 hover:underline">
-                            TC Code {requirement.tcCode}
-                          </button>
-                          <h3 className="mt-1 break-words text-base font-semibold leading-snug text-slate-900 sm:text-lg">
-                            {requirement.tcName}
-                          </h3>
-                        </div>
-                      </div>
-                      <span className="shrink-0 rounded-full bg-blue-50 px-3 py-1.5 text-xs font-semibold text-blue-800">
+                    className={`grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition sm:grid-cols-3 xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)] xl:items-start xl:gap-2 xl:rounded-none xl:border-x-0 xl:border-t-0 xl:px-3 xl:py-3 ${
+                      isSelected ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
+                    }`}>
+                    <div className="col-span-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2 sm:col-span-3 xl:col-span-1 xl:justify-center xl:border-0 xl:pb-0">
+                      <input aria-label={`Select TC Code ${requirement.tcCode}`} type="checkbox"
+                        checked={isSelected}
+                        disabled={!clientFilter || !examFilter}
+                        onChange={event => setSelectedIds(previous => event.target.checked
+                          ? [...new Set([...previous, record.id])]
+                          : previous.filter(id => id !== record.id))}
+                        className="rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                      <span className="rounded-full bg-blue-50 px-2.5 py-1 text-[10px] font-semibold text-blue-800 xl:hidden">
                         {stageTitle[record.approvalStage || 'surveillance_head']}
                       </span>
                     </div>
-
-                    <div className="grid min-w-0 gap-3 p-4 sm:grid-cols-2 sm:p-5 xl:grid-cols-4">
-                      {[
-                        ['Client', requirement.clientName],
-                        ['Exam', requirement.examName],
-                        ['Zone · State · City', `${requirement.zone} · ${requirement.state} · ${requirement.city}`],
-                        ['Vendor', vendorName],
-                      ].map(([label, value]) => (
-                        <div key={label} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50/80 px-3 py-2.5">
-                          <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-500">{label}</p>
-                          <p className="mt-1 break-words text-sm font-medium leading-snug text-slate-800">{value}</p>
-                        </div>
-                      ))}
+                    {[['Zone', requirement.zone], ['State', requirement.state]].map(([label, value]) => (
+                      <div key={label} className="min-w-0">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">{label}</p>
+                        <p className="mt-0.5 break-words text-xs font-medium leading-snug text-slate-800 xl:mt-0">{value}</p>
+                      </div>
+                    ))}
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">TC code / history</p>
+                      <button type="button" aria-label={`View history for TC Code ${requirement.tcCode}`}
+                        onClick={() => setDetailRecordId(record.id)}
+                        className="mt-0.5 inline-flex items-center gap-1 font-mono text-xs font-bold text-blue-700 hover:underline xl:mt-0">
+                        {requirement.tcCode}<History size={12} />
+                      </button>
+                      <span className="mt-1 hidden w-fit rounded-full bg-blue-50 px-2 py-0.5 text-[9px] font-semibold text-blue-800 xl:block">
+                        {stageTitle[record.approvalStage || 'surveillance_head']}
+                      </span>
                     </div>
-
-                    <div className="grid grid-cols-2 gap-2 px-4 pb-4 sm:grid-cols-4 sm:px-5">
-                      {[
-                        ['Installation quote', money(record.localVendorCost), 'text-blue-800'],
-                        ['Candidates', candidates.toLocaleString('en-IN'), 'text-slate-900'],
-                        ['Cost per candidate', candidates > 0 ? money(record.localVendorCost / candidates) : 'Unavailable', 'text-slate-900'],
-                        ['Temporary CCTV', `${days} ${days === 1 ? 'day' : 'days'}`, 'text-slate-900'],
-                      ].map(([label, value, valueClass]) => (
-                        <div key={label} className="min-w-0 rounded-xl border border-slate-100 px-3 py-2.5">
-                          <p className="text-[11px] leading-snug text-slate-500">{label}</p>
-                          <p className={`mt-1 break-words text-sm font-semibold tabular-nums ${valueClass}`}>{value}</p>
-                        </div>
-                      ))}
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">TC name · history</p>
+                      <button type="button" aria-label={`View venue history for ${requirement.tcName}, TC Code ${requirement.tcCode}`}
+                        onClick={() => setDetailRecordId(record.id)}
+                        className="mt-0.5 break-words text-left text-xs font-semibold leading-snug text-slate-900 hover:text-blue-700 hover:underline xl:mt-0">
+                        {requirement.tcName}
+                      </button>
                     </div>
-
-                    <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 border-t border-slate-100 px-4 py-3 text-xs sm:px-5">
-                      <p className="min-w-0 flex-1 text-slate-600">
-                        <span className="font-semibold text-slate-700">Exam date{examDates.length === 1 ? '' : 's'}:</span>{' '}
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Exam date</p>
+                      <p className="mt-0.5 break-words text-xs leading-snug text-slate-800 xl:mt-0">
                         {examDates.length > 0 ? examDates.map(formatExamDate).join(', ') : 'Not recorded'}
                       </p>
-                      <Button variant="outline" size="sm" onClick={() => setDetailRecordId(record.id)}>
-                        <History size={13} /> View history
-                      </Button>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Vendor</p>
+                      <p className="mt-0.5 break-words text-xs font-medium leading-snug text-slate-800 xl:mt-0">{vendorName}</p>
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Installation cost</p>
+                      <p className="mt-0.5 text-xs font-semibold tabular-nums text-slate-900 xl:mt-0">{money(record.localVendorCost)}</p>
                       {recordPreviousRevision && (
-                        <span className="text-slate-500">Previous quote: {money(recordPreviousRevision.localVendorCost)}</span>
+                        <p className="mt-1 text-[10px] leading-snug text-slate-500">Previous {money(recordPreviousRevision.localVendorCost)}</p>
                       )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Per candidate</p>
+                      {perCandidate === undefined ? (
+                        <span className="mt-0.5 block text-xs text-slate-500 xl:mt-0">Unavailable</span>
+                      ) : (
+                        <button type="button" aria-label={`Per candidate cost details for TC Code ${requirement.tcCode}`}
+                          onClick={() => setCandidateBreakdownRecordId(record.id)}
+                          className="mt-0.5 inline-flex items-center gap-1 text-xs font-semibold tabular-nums text-blue-700 underline decoration-dotted underline-offset-2 hover:text-blue-900 xl:mt-0">
+                          {money(perCandidate)}
+                        </button>
+                      )}
+                      <p className="mt-1 text-[10px] text-slate-500">{candidates.toLocaleString('en-IN')} candidates</p>
                       {flags.length > 0 ? (
                         <button type="button" onClick={() => setAlertRecordId(record.id)}
-                          className="inline-flex items-center gap-1 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1.5 font-semibold text-amber-900 hover:bg-amber-100"
+                          className="mt-1 inline-flex items-center gap-1 rounded-full bg-amber-50 px-2 py-1 text-[10px] font-semibold text-amber-900 hover:bg-amber-100"
                           aria-label={`Cost alert details for TC Code ${requirement.tcCode}`}>
-                          <AlertCircle size={13} /> Review cost alert
+                          <AlertCircle size={11} /> Review alert
                         </button>
                       ) : (
-                        <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2.5 py-1.5 font-medium text-emerald-700">
-                          <CheckCircle2 size={13} /> No cost alert
+                        <span className="mt-1 inline-flex items-center gap-1 text-[10px] text-emerald-700">
+                          <CheckCircle2 size={11} /> Clear
                         </span>
                       )}
                     </div>
-
-                    <div className="grid min-w-0 gap-4 border-t border-slate-100 bg-slate-50/60 p-4 sm:p-5 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-end">
-                      <div className="min-w-0">
-                        <Textarea
-                          label={`Approval remarks for TC Code ${requirement.tcCode}`}
-                          value={remarksByRecord[record.id] || ''}
-                          onChange={event => setRemarksByRecord(previous => ({
-                            ...previous,
-                            [record.id]: event.target.value,
-                          }))}
-                          rows={2}
-                          className="w-full min-w-0 max-w-full resize-y bg-white text-sm"
-                          placeholder={flags.length > 0
-                            ? 'Required: explain this cost alert before approving'
-                            : 'Optional approval note; required for send-back'}
-                        />
-                        {flags.length > 0 && (
-                          <label className="mt-3 flex items-start gap-2 text-xs leading-5 text-amber-900">
-                            <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
-                              onChange={event => setExceptionByRecord(previous => ({
-                                ...previous,
-                                [record.id]: event.target.checked,
-                              }))}
-                              className="mt-1 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
-                            Exception approval (required for cost alerts)
-                          </label>
-                        )}
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 lg:w-64 lg:grid-cols-1">
-                        <Button variant="outline" size="sm" className="min-h-10 whitespace-normal" disabled={!canApprove}
-                          onClick={() => handleDecision(record, 'sent_back')}>
-                          <CornerUpLeft size={14} /> Send back
-                        </Button>
-                        <Button size="sm" className="min-h-10 whitespace-normal" disabled={!canApprove}
-                          onClick={() => handleDecision(record, 'approved')}>
-                          <Check size={14} /> {record.approvalStage === 'enablement_head' ? 'Approve final' : 'Approve'}
-                        </Button>
-                      </div>
+                    <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-1">
+                      <Textarea
+                        label={`Approval remarks for TC Code ${requirement.tcCode}`}
+                        value={remarksByRecord[record.id] || ''}
+                        onChange={event => setRemarksByRecord(previous => ({
+                          ...previous,
+                          [record.id]: event.target.value,
+                        }))}
+                        rows={2}
+                        className="w-full min-w-0 max-w-full resize-y bg-white text-xs"
+                        placeholder={flags.length > 0
+                          ? 'Required: explain this cost alert before approving'
+                          : 'Optional note; required for send-back'}
+                      />
+                      {flags.length > 0 && (
+                        <label className="mt-2 flex items-start gap-2 text-[10px] leading-snug text-amber-900">
+                          <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
+                            onChange={event => setExceptionByRecord(previous => ({
+                              ...previous,
+                              [record.id]: event.target.checked,
+                            }))}
+                            className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                          Exception approval required
+                        </label>
+                      )}
+                    </div>
+                    <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 sm:col-span-3 xl:col-span-1 xl:grid-cols-1 xl:border-0 xl:pt-0">
+                      <Button variant="outline" size="sm" className="min-h-9 whitespace-normal px-2 text-[11px]" disabled={!canApprove}
+                        onClick={() => handleDecision(record, 'sent_back')}>
+                        <CornerUpLeft size={13} /> Send back
+                      </Button>
+                      <Button size="sm" className="min-h-9 whitespace-normal px-2 text-[11px]" disabled={!canApprove}
+                        onClick={() => handleDecision(record, 'approved')}>
+                        <Check size={13} /> {record.approvalStage === 'enablement_head' ? 'Approve final' : 'Approve'}
+                      </Button>
                     </div>
                   </article>
                 );
@@ -781,7 +729,7 @@ export default function ApprovalsPage() {
             <TablePagination page={currentPage} pageSize={PAGE_SIZE} totalItems={filteredQueue.length}
               onPageChange={nextPage => {
                 setPage(nextPage);
-                setSelectedId('');
+
               }} />
             {!clientFilter || !examFilter ? (
               <p className="border-t border-slate-100 px-4 py-2 text-xs text-slate-500">
@@ -790,121 +738,65 @@ export default function ApprovalsPage() {
             ) : null}
           </section>
 
-          {selectedRecord && selectedRequirement && (
-            <section className="grid min-w-0 gap-5">
-              <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
-                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">{selectedRequirement.clientName} · {selectedRequirement.examName}</p>
-                    <h2 className="mt-1 break-words text-xl font-bold text-slate-900">{selectedRequirement.tcName} · {selectedRequirement.tcCode}</h2>
-                    <p className="mt-1 break-words text-sm text-slate-500">{selectedRequirement.zone} · {selectedRequirement.state} · {selectedRequirement.city} · {selectedVendor?.vendorName || 'Vendor unavailable'}</p>
-                  </div>
-                  <span className="rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">{stageTitle[selectedStage]}</span>
-                </div>
-                <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                  {[
-                    [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Temporary CCTV days`, temporaryCctvDays.toLocaleString('en-IN')],
-                    [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Total recorded cost`, money(totalVenueCost)],
-                    [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Candidates`, totalVenueCandidates.toLocaleString('en-IN')],
-                    [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Cost per candidate`, totalVenueCandidates > 0 ? money(totalCostPerCandidate) : 'Unavailable'],
-                  ].map(([label, value]) => (
-                    <div key={label} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50 p-3">
-                      <p className="break-words text-xs text-slate-500">{label}</p>
-                      <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
-                    </div>
-                  ))}
-                </div>
-                <div className="mt-4 flex flex-wrap items-center justify-between gap-2">
-                  <h3 className="font-semibold text-slate-900">Exam-wise temporary CCTV use and cost</h3>
-                  <Button variant="outline" size="sm" onClick={() => setDetailRecordId(selectedRecord.id)}>
-                    <History size={13} /> Full venue and vendor cost history
-                  </Button>
-                </div>
-                <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
-                  {venueSchedule.map(schedule => {
-                    const scheduleRows = indexes.schedulesByRecord.get(schedule.record.id) || [];
-                    const scheduleVendor = indexes.vendorsById.get(schedule.record.vendorId);
-                    const scheduleCandidates = scheduleRows.length > 0
-                      ? scheduleRows.reduce((total, row) => total + row.scheduledCandidates, 0)
-                      : indexes.candidatesByRecord.get(schedule.record.id) || 0;
-                    return (
-                      <article key={schedule.record.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
-                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
-                          <div className="min-w-0">
-                            <p className="break-words text-sm font-semibold text-slate-900">{schedule.requirement.examName}</p>
-                            <p className="mt-0.5 break-words text-xs text-slate-500">{schedule.requirement.clientName}</p>
-                          </div>
-                          <span className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-900">
-                            {money(schedule.record.localVendorCost)}
-                          </span>
-                        </div>
-                        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-200 pt-3 text-xs">
-                          <div className="min-w-0">
-                            <dt className="text-slate-500">Exam dates</dt>
-                            <dd className="mt-0.5 break-words font-medium leading-relaxed text-slate-800">
-                              {schedule.dates.length > 0 ? schedule.dates.map(formatExamDate).join(', ') : 'Not recorded'}
-                            </dd>
-                          </div>
-                          <div>
-                            <dt className="text-slate-500">Candidates</dt>
-                            <dd className="mt-0.5 font-medium tabular-nums text-slate-800">
-                              {scheduleCandidates.toLocaleString('en-IN')}
-                            </dd>
-                          </div>
-                          <div className="col-span-2 min-w-0">
-                            <dt className="text-slate-500">Vendor</dt>
-                            <dd className="mt-0.5 break-words font-medium text-slate-800">{scheduleVendor?.vendorName || 'Unavailable'}</dd>
-                          </div>
-                        </dl>
-                      </article>
-                    );
-                  })}
-                  {venueSchedule.length === 0 && (
-                    <p className="col-span-full px-3 py-5 text-center text-sm text-slate-500">
-                      No installation history is recorded for this venue.
-                    </p>
-                  )}
-                </div>
-                <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-blue-50/70 p-3 text-xs sm:grid-cols-3">
-                  <p className="text-slate-600">
-                    <span className="block text-[11px] text-slate-500">Temporary CCTV days</span>
-                    <span className="mt-0.5 block font-semibold text-slate-900">{temporaryCctvDays}</span>
-                  </p>
-                  <p className="text-slate-600">
-                    <span className="block text-[11px] text-slate-500">Total candidates</span>
-                    <span className="mt-0.5 block font-semibold text-slate-900">{totalVenueCandidates.toLocaleString('en-IN')}</span>
-                  </p>
-                  <p className="col-span-2 text-slate-600 sm:col-span-1">
-                    <span className="block text-[11px] text-slate-500">Total recorded cost</span>
-                    <span className="mt-0.5 block font-semibold text-slate-900">{money(totalVenueCost)}</span>
-                  </p>
-                </div>
-              </div>
-
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h3 className="font-semibold text-slate-900">Current venue approval history</h3>
-                <div className="mt-5 border-t border-slate-100 pt-4">
-                  <h4 className="text-sm font-semibold text-slate-800">Venue approval history</h4>
-                  {currentApprovalEvents.length === 0 ? (
-                    <p className="mt-2 text-xs text-slate-500">No approval decisions recorded.</p>
-                  ) : (
-                    <ol className="mt-2 space-y-3">
-                      {currentApprovalEvents.map(event => (
-                        <li key={event.id} className="border-l-2 border-blue-200 pl-3 text-xs">
-                          <p className="font-medium text-slate-800">{stageTitle[event.stage]} · {event.action === 'approved' ? 'Approved' : 'Sent back'}</p>
-                          <p className="text-slate-500">{data.users.find(user => user.id === event.userId)?.name || 'Former user'} · {dateLabel(event.createdAt)}</p>
-                          <p className="mt-1 text-slate-700">Quote at decision: {money(data.quoteRevisions.find(revision => revision.id === event.quoteRevisionId)?.localVendorCost || 0)}</p>
-                          {event.remarks && <p className="mt-1 text-slate-600">{event.remarks}</p>}
-                        </li>
-                      ))}
-                    </ol>
-                  )}
-                </div>
-              </div>
-            </section>
-          )}
         </>
       )}
+
+      <Modal open={Boolean(candidateBreakdownRecord && candidateBreakdownRequirement)}
+        onClose={() => setCandidateBreakdownRecordId('')}
+        title={`Date-wise candidate schedule · TC Code ${candidateBreakdownRequirement?.tcCode || ''}`}
+        size="lg">
+        {candidateBreakdownRecord && candidateBreakdownRequirement && (() => {
+          const schedule = indexes.schedulesByRecord.get(candidateBreakdownRecord.id) || [];
+          const totalCandidates = schedule.reduce((total, item) => total + item.scheduledCandidates, 0);
+          return (
+            <div className="space-y-4">
+              <div className="rounded-xl bg-blue-50 px-4 py-3">
+                <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">
+                  {candidateBreakdownRequirement.tcName}
+                </p>
+                <p className="mt-1 text-sm text-slate-600">
+                  {candidateBreakdownRequirement.clientName} · {candidateBreakdownRequirement.examName}
+                </p>
+                <p className="mt-2 text-xs text-slate-600">
+                  Installation cost: <span className="font-semibold text-slate-900">{money(candidateBreakdownRecord.localVendorCost)}</span>
+                </p>
+              </div>
+              {schedule.length > 0 ? (
+                <>
+                  <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 rounded-t-lg bg-slate-800 px-4 py-2.5 text-xs font-semibold uppercase tracking-wide text-white">
+                    <span>Exam date</span>
+                    <span className="text-right">Scheduled candidates</span>
+                  </div>
+                  <div className="-mt-4 divide-y divide-slate-100 rounded-b-lg border border-slate-200">
+                    {schedule
+                      .slice()
+                      .sort((left, right) =>
+                        (normalizeExamDate(left.examDate) || left.examDate)
+                          .localeCompare(normalizeExamDate(right.examDate) || right.examDate)
+                      )
+                      .map(item => (
+                        <div key={item.id} className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 px-4 py-3 text-sm">
+                          <span className="text-slate-700">{formatExamDate(item.examDate)}</span>
+                          <span className="text-right font-semibold tabular-nums text-slate-900">
+                            {item.scheduledCandidates.toLocaleString('en-IN')}
+                          </span>
+                        </div>
+                      ))}
+                    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-x-4 bg-slate-50 px-4 py-3 text-sm font-semibold">
+                      <span>Total scheduled candidates</span>
+                      <span className="text-right tabular-nums">{totalCandidates.toLocaleString('en-IN')}</span>
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <p className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-900">
+                  No date-wise candidate schedule is recorded for this venue.
+                </p>
+              )}
+            </div>
+          );
+        })()}
+      </Modal>
 
       <Modal open={Boolean(detailRecordId && detailsRecord && detailsRequirement)}
         onClose={() => setDetailRecordId('')}
