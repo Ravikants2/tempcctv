@@ -2,6 +2,9 @@ name = "ion-cctv-tempcctv"
 main = "src/index.js"
 compatibility_date = "2025-06-01"
 
+[observability]
+enabled = true
+
 [vars]
 ALLOWED_ORIGINS = "https://ravikants2.github.io"
 DATA_REPO_OWNER = "Ravikants2"
