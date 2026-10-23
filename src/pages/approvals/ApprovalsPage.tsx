@@ -499,7 +499,7 @@ export default function ApprovalsPage() {
   };
 
   return (
-    <div className="space-y-5">
+    <div className="min-w-0 space-y-5">
       <header>
         <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Quote review workflow</p>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Approvals</h1>
@@ -791,25 +791,25 @@ export default function ApprovalsPage() {
           </section>
 
           {selectedRecord && selectedRequirement && (
-            <section className="grid gap-5">
-              <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <div className="flex flex-wrap items-start justify-between gap-3">
-                  <div>
+            <section className="grid min-w-0 gap-5">
+              <div className="min-w-0 overflow-hidden rounded-2xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
+                <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+                  <div className="min-w-0">
                     <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">{selectedRequirement.clientName} · {selectedRequirement.examName}</p>
-                    <h2 className="mt-1 text-xl font-bold text-slate-900">{selectedRequirement.tcName} · {selectedRequirement.tcCode}</h2>
-                    <p className="mt-1 text-sm text-slate-500">{selectedRequirement.zone} · {selectedRequirement.state} · {selectedRequirement.city} · {selectedVendor?.vendorName || 'Vendor unavailable'}</p>
+                    <h2 className="mt-1 break-words text-xl font-bold text-slate-900">{selectedRequirement.tcName} · {selectedRequirement.tcCode}</h2>
+                    <p className="mt-1 break-words text-sm text-slate-500">{selectedRequirement.zone} · {selectedRequirement.state} · {selectedRequirement.city} · {selectedVendor?.vendorName || 'Vendor unavailable'}</p>
                   </div>
                   <span className="rounded-full bg-blue-50 px-3 py-2 text-xs font-semibold text-blue-800">{stageTitle[selectedStage]}</span>
                 </div>
-                <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                <div className="mt-4 grid min-w-0 gap-3 sm:grid-cols-2 lg:grid-cols-4">
                   {[
                     [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Temporary CCTV days`, temporaryCctvDays.toLocaleString('en-IN')],
                     [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Total recorded cost`, money(totalVenueCost)],
                     [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Candidates`, totalVenueCandidates.toLocaleString('en-IN')],
                     [`${clientFilter || selectedRequirement.clientName} · ${examFilter || selectedRequirement.examName} · Cost per candidate`, totalVenueCandidates > 0 ? money(totalCostPerCandidate) : 'Unavailable'],
                   ].map(([label, value]) => (
-                    <div key={label} className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-                      <p className="text-xs text-slate-500">{label}</p>
+                    <div key={label} className="min-w-0 rounded-xl border border-slate-100 bg-slate-50 p-3">
+                      <p className="break-words text-xs text-slate-500">{label}</p>
                       <p className="mt-1 text-sm font-semibold text-slate-900">{value}</p>
                     </div>
                   ))}
@@ -820,47 +820,64 @@ export default function ApprovalsPage() {
                     <History size={13} /> Full venue and vendor cost history
                   </Button>
                 </div>
-                <div className="mt-2 overflow-x-auto">
-                  <table className="w-full text-left text-sm">
-                    <thead className="bg-slate-50 text-xs uppercase text-slate-500">
-                      <tr>{['Client', 'Exam', 'Exam dates', 'Candidates', 'Vendor', 'Installation quote'].map(label =>
-                        <th key={label} className="whitespace-normal px-3 py-2">{label}</th>
-                      )}</tr>
-                    </thead>
-                    <tbody>
-                      {venueSchedule.map(schedule => {
-                        const scheduleRows = indexes.schedulesByRecord.get(schedule.record.id) || [];
-                        const scheduleVendor = indexes.vendorsById.get(schedule.record.vendorId);
-                        return (
-                          <tr key={schedule.record.id} className="border-t border-slate-100">
-                            <td className="px-3 py-2">{schedule.requirement.clientName}</td>
-                            <td className="px-3 py-2">{schedule.requirement.examName}</td>
-                            <td className="whitespace-normal px-3 py-2 leading-relaxed">
+                <div className="mt-3 grid min-w-0 gap-3 md:grid-cols-2">
+                  {venueSchedule.map(schedule => {
+                    const scheduleRows = indexes.schedulesByRecord.get(schedule.record.id) || [];
+                    const scheduleVendor = indexes.vendorsById.get(schedule.record.vendorId);
+                    const scheduleCandidates = scheduleRows.length > 0
+                      ? scheduleRows.reduce((total, row) => total + row.scheduledCandidates, 0)
+                      : indexes.candidatesByRecord.get(schedule.record.id) || 0;
+                    return (
+                      <article key={schedule.record.id} className="min-w-0 rounded-xl border border-slate-200 bg-slate-50/70 p-3 sm:p-4">
+                        <div className="flex min-w-0 flex-wrap items-start justify-between gap-2">
+                          <div className="min-w-0">
+                            <p className="break-words text-sm font-semibold text-slate-900">{schedule.requirement.examName}</p>
+                            <p className="mt-0.5 break-words text-xs text-slate-500">{schedule.requirement.clientName}</p>
+                          </div>
+                          <span className="shrink-0 rounded-lg bg-white px-2.5 py-1.5 text-sm font-semibold tabular-nums text-slate-900">
+                            {money(schedule.record.localVendorCost)}
+                          </span>
+                        </div>
+                        <dl className="mt-3 grid min-w-0 grid-cols-2 gap-x-3 gap-y-2 border-t border-slate-200 pt-3 text-xs">
+                          <div className="min-w-0">
+                            <dt className="text-slate-500">Exam dates</dt>
+                            <dd className="mt-0.5 break-words font-medium leading-relaxed text-slate-800">
                               {schedule.dates.length > 0 ? schedule.dates.map(formatExamDate).join(', ') : 'Not recorded'}
-                            </td>
-                            <td className="px-3 py-2">
-                              {(scheduleRows.length > 0
-                                ? scheduleRows.reduce((total, row) => total + row.scheduledCandidates, 0)
-                                : indexes.candidatesByRecord.get(schedule.record.id) || 0).toLocaleString('en-IN')}
-                            </td>
-                            <td className="whitespace-nowrap px-3 py-2">{scheduleVendor?.vendorName || 'Unavailable'}</td>
-                            <td className="whitespace-nowrap px-3 py-2 font-medium">{money(schedule.record.localVendorCost)}</td>
-                          </tr>
-                        );
-                      })}
-                      {venueSchedule.length === 0 && (
-                        <tr><td colSpan={6} className="px-3 py-5 text-center text-sm text-slate-500">No installation history is recorded for this venue.</td></tr>
-                      )}
-                    </tbody>
-                    <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold">
-                      <tr>
-                        <td colSpan={3} className="px-3 py-2">Total · {temporaryCctvDays} distinct temporary CCTV days</td>
-                        <td className="whitespace-nowrap px-3 py-2">{totalVenueCandidates.toLocaleString('en-IN')}</td>
-                        <td className="px-3 py-2">All recorded vendors</td>
-                        <td className="whitespace-nowrap px-3 py-2">{money(totalVenueCost)}</td>
-                      </tr>
-                    </tfoot>
-                  </table>
+                            </dd>
+                          </div>
+                          <div>
+                            <dt className="text-slate-500">Candidates</dt>
+                            <dd className="mt-0.5 font-medium tabular-nums text-slate-800">
+                              {scheduleCandidates.toLocaleString('en-IN')}
+                            </dd>
+                          </div>
+                          <div className="col-span-2 min-w-0">
+                            <dt className="text-slate-500">Vendor</dt>
+                            <dd className="mt-0.5 break-words font-medium text-slate-800">{scheduleVendor?.vendorName || 'Unavailable'}</dd>
+                          </div>
+                        </dl>
+                      </article>
+                    );
+                  })}
+                  {venueSchedule.length === 0 && (
+                    <p className="col-span-full px-3 py-5 text-center text-sm text-slate-500">
+                      No installation history is recorded for this venue.
+                    </p>
+                  )}
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-2 rounded-xl bg-blue-50/70 p-3 text-xs sm:grid-cols-3">
+                  <p className="text-slate-600">
+                    <span className="block text-[11px] text-slate-500">Temporary CCTV days</span>
+                    <span className="mt-0.5 block font-semibold text-slate-900">{temporaryCctvDays}</span>
+                  </p>
+                  <p className="text-slate-600">
+                    <span className="block text-[11px] text-slate-500">Total candidates</span>
+                    <span className="mt-0.5 block font-semibold text-slate-900">{totalVenueCandidates.toLocaleString('en-IN')}</span>
+                  </p>
+                  <p className="col-span-2 text-slate-600 sm:col-span-1">
+                    <span className="block text-[11px] text-slate-500">Total recorded cost</span>
+                    <span className="mt-0.5 block font-semibold text-slate-900">{money(totalVenueCost)}</span>
+                  </p>
                 </div>
               </div>
 
