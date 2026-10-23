@@ -1,0 +1,7 @@
+.env
+.env.local
+worker/.dev.vars
+node_modules/
+dist/
+*.log
+.DS_Store

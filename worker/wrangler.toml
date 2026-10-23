@@ -1,0 +1,11 @@
+name = "ion-cctv-tempcctv"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[vars]
+ALLOWED_ORIGINS = "https://ravikants2.github.io"
+DATA_REPO_OWNER = "Ravikants2"
+DATA_REPO_NAME = "ion-cctv-private-data"
+DATA_BRANCH = "data"
+GEMINI_MODEL = "gemini-3.1-flash-lite"
+GEMINI_FALLBACK_MODEL = "gemini-3.8-flash"
