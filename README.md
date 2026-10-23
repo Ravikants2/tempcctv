@@ -29,10 +29,12 @@ The Worker reads and writes `db.json` on the private repository's `data` branch.
 ### 2. Configure Pages and Worker settings
 
 1. In the new repository, set **Settings → Pages → Build and deployment → Source** to **GitHub Actions**.
-2. Under **Settings → Secrets and variables → Actions → Variables**, set `VITE_API_ENDPOINT` to `https://ion-cctv-tempcctv.<account>.workers.dev` and `VITE_GEMINI_CHAT_ENDPOINT` to `https://ion-cctv-tempcctv.<account>.workers.dev/api/chat`. Replace `<account>` with your Cloudflare Workers account subdomain.
+2. Under **Settings → Secrets and variables → Actions → Variables**, set `VITE_API_ENDPOINT` to `https://ion-cctv-tempcctv.ion-cctv-chat-99.workers.dev` and `VITE_GEMINI_CHAT_ENDPOINT` to `https://ion-cctv-tempcctv.ion-cctv-chat-99.workers.dev/api/chat`.
 3. Ensure the private data repository exists and contains the migrated `db.json` on its `data` branch.
 4. Push the code to the `main` branch. The Worker workflow deploys the API, then the Pages workflow builds and publishes the frontend. Watch both under the new repository's **Actions** tab.
 5. Sign in using the bootstrap admin credentials. Reset passwords for existing accounts from User Management; old client-side password credentials are not used by the secure login.
+
+The Pages site can publish before the Worker is configured, but sign-in and data operations will not work until the Worker deployment succeeds. Do not use the site with real data until the Worker secrets above are configured and the Worker deployment is successful.
 
 For local development, put `VITE_API_ENDPOINT` and `VITE_GEMINI_CHAT_ENDPOINT` in an ignored `.env.local` file. Add `http://localhost:5173` to the Worker `ALLOWED_ORIGINS` setting when using the local Vite server; retain the production origin as well.
 
