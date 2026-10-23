@@ -80,6 +80,7 @@ describe('secure GitHub data API', () => {
   it('hashes passwords with a salted, slow PBKDF2 hash', async () => {
     const first = await dataApiInternals.derivePasswordHash('Correct horse battery staple!');
     const second = await dataApiInternals.derivePasswordHash('Correct horse battery staple!');
+    expect(first.split('$')[1]).toBe('100000');
     expect(first).not.toBe(second);
     await expect(dataApiInternals.verifyPassword('Correct horse battery staple!', first)).resolves.toBe(true);
     await expect(dataApiInternals.verifyPassword('wrong password', first)).resolves.toBe(false);
