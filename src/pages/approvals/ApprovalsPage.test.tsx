@@ -187,13 +187,13 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    const venueCell = screen.getAllByRole('button', { name: /TC Code TC-100/ })[0].closest('td');
-    expect(venueCell?.textContent?.indexOf('TC-100')).toBeLessThan(venueCell?.textContent?.indexOf('Test Venue') || 0);
-    expect(screen.getByText('30/08/2026')).toBeInTheDocument();
+    const venueCard = screen.getAllByRole('button', { name: /TC Code TC-100/ })[0].closest('[data-approval-card]');
+    expect(venueCard?.textContent?.indexOf('TC-100')).toBeLessThan(venueCard?.textContent?.indexOf('Test Venue') || 0);
+    expect(within(venueCard as HTMLElement).getByText('30/08/2026')).toBeInTheDocument();
     expect(screen.queryByText(/46264/)).not.toBeInTheDocument();
   });
 
-  it('shows all exam dates together with one installation quote', () => {
+  it('shows responsive venue cards with exam dates, scheduled candidates, and installation quote', () => {
     mockData = {
       ...initialData,
       examDates: [
@@ -205,9 +205,12 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    const dateCell = screen.getByText('01/02/2026, 02/02/2026');
-    expect(dateCell.closest('tr')).toHaveTextContent('₹12,500');
-    expect(dateCell.closest('tr')).toHaveTextContent('800');
+    const venueCard = screen.getByRole('article', { name: 'Approval details for TC Code TC-100' });
+    expect(within(venueCard).getByText('01/02/2026, 02/02/2026')).toBeInTheDocument();
+    expect(venueCard).toHaveTextContent('₹12,500');
+    expect(venueCard).toHaveTextContent('500');
+    expect(venueCard).toHaveTextContent('Test Vendor');
+    expect(document.querySelector('[data-approval-queue] table')).toBeNull();
   });
 
   it('keeps the installation quote visible when exam-date details are missing', () => {
@@ -216,8 +219,9 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    expect(screen.getAllByText('₹12,500', { selector: 'td' }).length).toBeGreaterThan(0);
-    expect(screen.getByText('Not recorded')).toBeInTheDocument();
+    const venueCard = screen.getByRole('article', { name: 'Approval details for TC Code TC-100' });
+    expect(venueCard).toHaveTextContent('₹12,500');
+    expect(within(venueCard).getByText('Not recorded')).toBeInTheDocument();
   });
 
   it('shows all temporary CCTV days and aggregates recorded cost across venue installations', () => {
