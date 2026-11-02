@@ -90,7 +90,7 @@ export default function RecordsPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => exportRecordsToExcel(filtered, scopedRequirements, data.vendors.filter(vendor => currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone), data.examDates)}>
-            <Download size={14} /> Excel
+            <Download size={14} /> Excel ({filtered.length})
           </Button>
           <Button variant="outline" size="sm" onClick={() => printRecordsPDF(filtered, scopedRequirements, data.vendors.filter(vendor => currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone), data.examDates, filterLabel)}>
             <Printer size={14} /> PDF

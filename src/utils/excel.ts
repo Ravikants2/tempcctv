@@ -1,5 +1,13 @@
 import * as XLSX from 'xlsx';
-import type { RequirementMaster, VendorMaster, InstallationRecord, ExamDateDetail } from '../types';
+import type {
+  ApprovalEvent,
+  AppData,
+  ExamDateDetail,
+  InstallationRecord,
+  QuoteRevision,
+  RequirementMaster,
+  VendorMaster,
+} from '../types';
 import { normalizeExamDate } from './dates';
 import { getVendorCode } from './vendorCode';
 
@@ -99,10 +107,12 @@ export function exportVendorsToExcel(vendors: VendorMaster[]): void {
     'Zone': vendor.zone,
     'Vendor Name': vendor.vendorName,
   }));
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Vendors');
-  XLSX.writeFile(wb, `ion-cctv-vendors-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const headers = ['Vendor ID', 'Zone', 'Vendor Name'];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+  XLSX.utils.sheet_add_json(worksheet, rows, { origin: 'A2', skipHeader: true });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Vendors');
+  XLSX.writeFile(workbook, `ion-cctv-vendors-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 export interface BulkInstallationRow {
@@ -199,8 +209,77 @@ export function exportRecordsToExcel(
       'Storage Provided': inst.storageProvided ? 'Yes' : 'No',
     };
   });
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Records');
-  XLSX.writeFile(wb, `ion-cctv-records-${new Date().toISOString().slice(0, 10)}.xlsx`);
+  const headers = [
+    'S No', 'Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client Name', 'Exam Name',
+    'No. Of Exam Days', 'No. Of Scheduled Candidates', 'Vendor Name',
+    'Local Vendor Cost (Excl. Tax)', 'Minimum Cost', 'Camera Count', 'Installation Type',
+    'Proxy Provided', 'Internet Provided', 'Storage Provided',
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+  XLSX.utils.sheet_add_json(worksheet, rows, { origin: 'A2', skipHeader: true });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Records');
+  XLSX.writeFile(workbook, `ion-cctv-records-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
+export function exportApprovalsToExcel(
+  records: InstallationRecord[],
+  data: Pick<AppData, 'requirements' | 'vendors' | 'quoteRevisions' | 'approvalEvents' | 'users'>,
+  viewLabel: string
+): void {
+  const requirementsById = new Map(data.requirements.map(requirement => [requirement.id, requirement]));
+  const vendorsById = new Map(data.vendors.map(vendor => [vendor.id, vendor]));
+  const usersById = new Map(data.users.map(user => [user.id, user]));
+  const revisionsByRecord = new Map<string, QuoteRevision[]>();
+  data.quoteRevisions.forEach(revision => {
+    const revisions = revisionsByRecord.get(revision.installationRecordId) || [];
+    revisions.push(revision);
+    revisionsByRecord.set(revision.installationRecordId, revisions);
+  });
+  const eventsByRecord = new Map<string, ApprovalEvent[]>();
+  data.approvalEvents.forEach(event => {
+    const events = eventsByRecord.get(event.installationRecordId) || [];
+    events.push(event);
+    eventsByRecord.set(event.installationRecordId, events);
+  });
+
+  const rows = records.flatMap(record => {
+    const requirement = requirementsById.get(record.requirementId);
+    if (!requirement) return [];
+    const recordEvents = [...(eventsByRecord.get(record.id) || [])]
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const recordRevisions = [...(revisionsByRecord.get(record.id) || [])]
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const lastEvent = recordEvents[recordEvents.length - 1];
+    const latestRevision = recordRevisions[recordRevisions.length - 1];
+    return [{
+      'Client Name': requirement.clientName,
+      'Exam Name': requirement.examName,
+      'Zone': requirement.zone,
+      'State': requirement.state,
+      'City': requirement.city,
+      'TC Code': requirement.tcCode,
+      'TC Name': requirement.tcName,
+      'Vendor Name': vendorsById.get(record.vendorId)?.vendorName || 'Vendor unavailable',
+      'Quote': record.localVendorCost,
+      'Candidates': latestRevision?.totalCandidates ?? '',
+      'Approval List': viewLabel,
+      'Approval Status': record.approvalStatus || 'pending',
+      'Approval Stage': record.approvalStage || lastEvent?.stage || 'surveillance_head',
+      'Last Decision': lastEvent?.action || '',
+      'Last Approver': lastEvent ? usersById.get(lastEvent.userId)?.name || 'Former user' : '',
+      'Decision Date': lastEvent?.createdAt || '',
+      'Remarks': lastEvent?.remarks || '',
+    }];
+  });
+  const headers = [
+    'Client Name', 'Exam Name', 'Zone', 'State', 'City', 'TC Code', 'TC Name', 'Vendor Name',
+    'Quote', 'Candidates', 'Approval List', 'Approval Status', 'Approval Stage', 'Last Decision',
+    'Last Approver', 'Decision Date', 'Remarks',
+  ];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+  XLSX.utils.sheet_add_json(worksheet, rows, { origin: 'A2', skipHeader: true });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Approvals');
+  XLSX.writeFile(workbook, `ion-cctv-approvals-${new Date().toISOString().slice(0, 10)}.xlsx`);
 }

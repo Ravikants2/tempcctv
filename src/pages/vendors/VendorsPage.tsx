@@ -163,7 +163,7 @@ export default function VendorsPage() {
         <h1 className="text-xl font-bold text-gray-900">Zone-wise Vendor Master</h1>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => downloadTemplate('vendor')}><Download size={14} /> Template</Button>
-          <Button variant="outline" size="sm" onClick={() => exportVendorsToExcel(scopedVendors)}><Download size={14} /> Download Data</Button>
+          <Button variant="outline" size="sm" onClick={() => exportVendorsToExcel(filtered)}><Download size={14} /> Excel ({filtered.length})</Button>
           {can('upload_vendors') && (
             <>
               <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload</Button>

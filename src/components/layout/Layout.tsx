@@ -32,6 +32,13 @@ export function Layout({ children }: { children: React.ReactNode }) {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const restoreRef = useRef<HTMLInputElement>(null);
   const visibleNavItems = navItems.filter(item => can(item.permission));
+  const currentPath = location.pathname.replace(/\/+$/, '');
+  const pageHasDedicatedExcelExport = [
+    '/requirements',
+    '/vendors',
+    '/records',
+    '/approvals',
+  ].some(path => currentPath.endsWith(path));
 
   const handleLogout = async () => {
     try {
@@ -169,7 +176,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="flex-1 max-w-screen-2xl mx-auto w-full px-4 py-7 sm:px-6 lg:px-8">
-        <PageExportActions showExcel={!location.pathname.endsWith('/requirements')} />
+        <PageExportActions showExcel={!pageHasDedicatedExcelExport} />
         {children}
       </main>
     </div>

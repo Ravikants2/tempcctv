@@ -6,8 +6,9 @@ import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { useAuth } from '../../context/AuthContext';
 import { formatExamDate, normalizeExamDate } from '../../utils/dates';
+import { exportApprovalsToExcel } from '../../utils/excel';
 import type { ApprovalEvent, ApprovalStage, ApprovalStatus, InstallationRecord, QuoteRevision } from '../../types';
-import { AlertCircle, ArrowLeft, Check, CheckCircle2, Clock3, CornerUpLeft, History } from 'lucide-react';
+import { AlertCircle, ArrowLeft, Check, CheckCircle2, Clock3, CornerUpLeft, Download, History } from 'lucide-react';
 
 const PAGE_SIZE = 10;
 
@@ -529,6 +530,9 @@ export default function ApprovalsPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={() => exportApprovalsToExcel(filteredQueue, data, 'Pending approval queue')}>
+                  <Download size={14} /> Excel ({filteredQueue.length})
+                </Button>
                 {selectedIds.length > 0 && (
                   <Button variant="outline" size="sm" onClick={() => setSelectedIds([])}>
                     Clear selection ({selectedIds.length})
@@ -996,18 +1000,31 @@ export default function ApprovalsPage() {
                   : 'Choose a client, then an exam, to view venue details.'}
               </p>
             </div>
-            <Button variant="outline" size="sm" onClick={() => {
-              if (approvalDrilldownExam) {
-                setApprovalDrilldownExam('');
-              } else if (approvalDrilldownClient) {
-                setApprovalDrilldownClient('');
-              } else {
-                setApprovalDrilldown(null);
-              }
-            }}>
-              <ArrowLeft size={14} />
-              {approvalDrilldownExam ? 'Back to exams' : approvalDrilldownClient ? 'Back to clients' : 'Back to approvals'}
-            </Button>
+            <div className="flex flex-wrap gap-2">
+              <Button variant="outline" size="sm" onClick={() => exportApprovalsToExcel(
+                scopedDrilldownRecords,
+                data,
+                approvalDrilldown === 'approved'
+                  ? 'Approved at your level'
+                  : approvalDrilldown === 'returned'
+                    ? 'Returned to zone'
+                    : 'Waiting for approval'
+              )}>
+                <Download size={14} /> Excel ({scopedDrilldownRecords.length})
+              </Button>
+              <Button variant="outline" size="sm" onClick={() => {
+                if (approvalDrilldownExam) {
+                  setApprovalDrilldownExam('');
+                } else if (approvalDrilldownClient) {
+                  setApprovalDrilldownClient('');
+                } else {
+                  setApprovalDrilldown(null);
+                }
+              }}>
+                <ArrowLeft size={14} />
+                {approvalDrilldownExam ? 'Back to exams' : approvalDrilldownClient ? 'Back to clients' : 'Back to approvals'}
+              </Button>
+            </div>
           </div>
 
           {!approvalDrilldownClient ? (
