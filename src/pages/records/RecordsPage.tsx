@@ -88,6 +88,19 @@ export default function RecordsPage() {
     currentUser?.role !== 'zonal_user' ||
     scopedRequirements.some(requirement => requirement.zone === vendor.zone)
   );
+  const templateRequirementIds = new Set(templateRequirements.map(requirement => requirement.id));
+  const templateInstallationRequirementIds = new Map(data.installations.map(installation => [
+    installation.id,
+    installation.requirementId,
+  ]));
+  const templateExamDates = data.examDates.flatMap(date => {
+    const requirementId = templateInstallationRequirementIds.get(date.installationRecordId);
+    if (!requirementId || !templateRequirementIds.has(requirementId)) return [];
+    const examDate = normalizeExamDate(date.examDate) || date.examDate;
+    if (startDate && examDate < startDate) return [];
+    if (endDate && examDate > endDate) return [];
+    return [{ requirementId, examDate, scheduledCandidates: date.scheduledCandidates }];
+  });
 
   const handleViewQuotation = (quotationFileId: string) => {
     const q = data.quotations.find(q => q.id === quotationFileId);
@@ -123,7 +136,7 @@ export default function RecordsPage() {
             <Printer size={14} /> PDF
           </Button>
           <Button variant="outline" size="sm"
-            onClick={() => downloadInstallationTemplate(templateRequirements, templateVendors)}>
+            onClick={() => downloadInstallationTemplate(templateRequirements, templateVendors, templateExamDates)}>
             <Download size={14} /> Template ({templateRequirements.length})
           </Button>
           {can('create_installation') && (

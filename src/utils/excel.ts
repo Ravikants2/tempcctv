@@ -66,7 +66,8 @@ function downloadWorkbookBytes(bytes: Uint8Array, filename: string): void {
 
 export function createInstallationTemplate(
   requirements: RequirementMaster[],
-  vendors: VendorMaster[]
+  vendors: VendorMaster[],
+  existingDates: Array<{ requirementId: string; examDate: string; scheduledCandidates: number }> = []
 ): Uint8Array {
   const zones = [...new Set(requirements.map(requirement => requirement.zone))].sort();
   const vendorNamesByZone = new Map(zones.map(zone => [
@@ -88,23 +89,34 @@ export function createInstallationTemplate(
   const listRows = Array.from({ length: Math.max(...listColumns.map(column => column.length)) }, (_, row) =>
     listColumns.map(column => column[row] || '')
   );
-  const templateRows = requirements.map(requirement => [
-    requirement.clientName,
-    requirement.examName,
-    requirement.zone,
-    requirement.state,
-    requirement.city,
-    requirement.tcCode,
-    requirement.tcName,
-    examDateSerial(requirement.examDate),
-    requirement.scheduledCandidates ?? '',
-    ...Array(bulkInstallationHeaders.length - 9).fill(''),
-  ]);
+  const templateRows = requirements.flatMap(requirement => {
+    const recordsDates = existingDates
+      .filter(date => date.requirementId === requirement.id)
+      .sort((left, right) => left.examDate.localeCompare(right.examDate));
+    const dates = recordsDates.length > 0
+      ? recordsDates
+      : [{
+          examDate: requirement.examDate || '',
+          scheduledCandidates: requirement.scheduledCandidates ?? '',
+        }];
+    return dates.map(date => [
+      requirement.clientName,
+      requirement.examName,
+      requirement.zone,
+      requirement.state,
+      requirement.city,
+      requirement.tcCode,
+      requirement.tcName,
+      examDateSerial(date.examDate),
+      date.scheduledCandidates,
+      ...Array(bulkInstallationHeaders.length - 9).fill(''),
+    ]);
+  });
   const templateSheet = XLSX.utils.aoa_to_sheet([bulkInstallationHeaders, ...templateRows]);
   const dateColumn = excelColumn(bulkInstallationHeaders.indexOf('Exam Date') + 1);
-  requirements.forEach((requirement, index) => {
+  templateRows.forEach((row, index) => {
     const dateCell = templateSheet[`${dateColumn}${index + 2}`];
-    if (dateCell && examDateSerial(requirement.examDate) !== '') dateCell.z = 'yyyy-mm-dd';
+    if (dateCell && row[7] !== '') dateCell.z = 'yyyy-mm-dd';
   });
   const listSheet = XLSX.utils.aoa_to_sheet(listRows);
   const workbook = XLSX.utils.book_new();
@@ -130,7 +142,7 @@ export function createInstallationTemplate(
     Names: definedNames,
   };
 
-  const validationEndRow = Math.max(1000, requirements.length + 100);
+  const validationEndRow = Math.max(1000, templateRows.length + 100);
   const columnIndex = (header: string) => bulkInstallationHeaders.indexOf(header) + 1;
   const validations = [
     `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(columnIndex('Installation Type'))}2:${excelColumn(columnIndex('Installation Type'))}${validationEndRow}"><formula1>InstallationTypes</formula1></dataValidation>`,
@@ -148,12 +160,17 @@ export function createInstallationTemplate(
     );
   }
   const vendorValidationRows = new Map<string, number[]>();
-  requirements.forEach((requirement, index) => {
+  let templateRow = 2;
+  requirements.forEach(requirement => {
     const rangeName = vendorRangeNames.get(requirement.zone);
-    if (!rangeName) return;
-    const rows = vendorValidationRows.get(rangeName) || [];
-    rows.push(index + 2);
-    vendorValidationRows.set(rangeName, rows);
+    const recordsDates = existingDates.filter(date => date.requirementId === requirement.id);
+    const rowCount = Math.max(1, recordsDates.length);
+    if (rangeName) {
+      const rows = vendorValidationRows.get(rangeName) || [];
+      for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) rows.push(templateRow + rowOffset);
+      vendorValidationRows.set(rangeName, rows);
+    }
+    templateRow += rowCount;
   });
   vendorValidationRows.forEach((rows, rangeName) => {
     const vendorColumn = excelColumn(columnIndex('Vendor Name'));
@@ -185,10 +202,11 @@ export function createInstallationTemplate(
 
 export function downloadInstallationTemplate(
   requirements: RequirementMaster[],
-  vendors: VendorMaster[]
+  vendors: VendorMaster[],
+  existingDates: Array<{ requirementId: string; examDate: string; scheduledCandidates: number }> = []
 ): void {
   downloadWorkbookBytes(
-    createInstallationTemplate(requirements, vendors),
+    createInstallationTemplate(requirements, vendors, existingDates),
     `bulk-installation-template-${new Date().toISOString().slice(0, 10)}.xlsx`
   );
 }

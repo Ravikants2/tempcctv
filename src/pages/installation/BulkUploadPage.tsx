@@ -32,6 +32,17 @@ export default function BulkUploadPage() {
   const scopedVendors = data.vendors.filter(vendor =>
     currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone
   );
+  const scopedRequirementIds = new Set(scopedRequirements.map(requirement => requirement.id));
+  const installationRequirementIds = new Map(data.installations.map(installation => [
+    installation.id,
+    installation.requirementId,
+  ]));
+  const templateExamDates = data.examDates.flatMap(date => {
+    const requirementId = installationRequirementIds.get(date.installationRecordId);
+    return requirementId && scopedRequirementIds.has(requirementId)
+      ? [{ requirementId, examDate: date.examDate, scheduledCandidates: date.scheduledCandidates }]
+      : [];
+  });
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -201,7 +212,8 @@ export default function BulkUploadPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-xl font-bold text-gray-900">Bulk Installation Upload</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => downloadInstallationTemplate(scopedRequirements, scopedVendors)}>
+          <Button variant="outline" size="sm"
+            onClick={() => downloadInstallationTemplate(scopedRequirements, scopedVendors, templateExamDates)}>
             <Download size={14} /> Template ({scopedRequirements.length})
           </Button>
           <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload File</Button>

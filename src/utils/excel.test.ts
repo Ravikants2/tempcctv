@@ -210,6 +210,33 @@ describe('filtered operational Excel exports', () => {
     expect(worksheetXml).toContain('sqref="K2"');
   });
 
+  it('prefills all exam dates and candidate counts from existing records', () => {
+    const requirement = {
+      ...makeRequirement(7),
+      examDate: '2026-01-01',
+      scheduledCandidates: 100,
+    };
+    const template = createInstallationTemplate(
+      [requirement],
+      [makeVendor(7)],
+      [
+        { requirementId: requirement.id, examDate: '2026-12-11', scheduledCandidates: 250 },
+        { requirementId: requirement.id, examDate: '2026-12-12', scheduledCandidates: 275 },
+      ]
+    );
+    const workbook = XLSX.read(template, { type: 'array' });
+    const rows = XLSX.utils.sheet_to_json<Record<string, string | number>>(workbook.Sheets.Template);
+
+    expect(rows).toHaveLength(2);
+    expect(rows.map(row => row['Scheduled Candidates'])).toEqual([250, 275]);
+    expect(rows.map(row => XLSX.SSF.format(
+      'yyyy-mm-dd',
+      workbook.Sheets.Template[`H${rows.indexOf(row) + 2}`].v
+    ))).toEqual(['2026-12-11', '2026-12-12']);
+    expect(rows.every(row => row['Client Name'] === requirement.clientName &&
+      row['Exam Name'] === requirement.examName && row['TC Code'] === requirement.tcCode)).toBe(true);
+  });
+
   it('parses multiple storage entries from bulk installation rows', async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([[
       'Client Name', 'Exam Name', 'TC Code', 'Exam Date', 'Scheduled Candidates',
