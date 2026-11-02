@@ -5,8 +5,11 @@ import {
   changeManagedUserPassword,
   createManagedUser,
   getInitialData,
+  isApiConfigured,
+  loadData,
   loginUser,
   logoutUser,
+  recordExportAudit,
   restoreSession,
   saveData,
 } from '../utils/storage';
@@ -19,20 +22,15 @@ interface AuthContextType {
   data: AppData;
   syncStatus: SyncStatus;
   syncError: string;
-  login: (
-    email: string,
-    password: string,
-    token: string,
-    bootstrapName?: string,
-    recoverSuperAdmin?: boolean,
-    rememberToken?: boolean
-  ) => Promise<boolean>;
+  isApiConfigured: boolean;
+  login: (email: string, password: string) => Promise<boolean>;
   logout: () => Promise<void>;
   createUserAccount: (user: User, password: string) => Promise<User>;
   changeUserPassword: (userId: string, password: string) => Promise<void>;
   updateData: (updater: (prev: AppData) => AppData) => void;
   addAuditLog: (action: AuditAction, entityType: string, entityId: string, before?: unknown, after?: unknown) => void;
   can: (action: string) => boolean;
+  reloadFromGitHub: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | null>(null);
@@ -103,6 +101,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
+  const reloadFromGitHub = useCallback(async () => {
+    setSyncStatus('loading');
+    setSyncError('');
+    try {
+      const loaded = await loadData();
+      setData(loaded);
+      setSyncStatus('idle');
+    } catch (e) {
+      setSyncStatus('error');
+      setSyncError((e as Error).message);
+    }
+  }, []);
+
   const updateData = useCallback((updater: (prev: AppData) => AppData) => {
     setData(prev => {
       const next = updater(prev);
@@ -131,30 +142,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     action: AuditAction, entityType: string, entityId: string,
     before?: unknown, after?: unknown
   ) => {
-    updateData(prev => ({
-      ...prev,
-      auditLogs: [...prev.auditLogs, {
-        id: uuidv4(),
-        userId: currentUser?.id || 'system',
-        action, entityType, entityId,
-        beforeJson: before ? JSON.stringify(before) : undefined,
-        afterJson: after ? JSON.stringify(after) : undefined,
-        timestamp: new Date().toISOString(),
-      }],
-    }));
-  }, [currentUser, updateData]);
+    if (action === 'EXPORT') {
+      void recordExportAudit(entityType, entityId).then(setData).catch(error => {
+        setSyncStatus('error');
+        setSyncError((error as Error).message);
+      });
+      return;
+    }
+    setData(prev => {
+      const next = {
+        ...prev,
+        auditLogs: [...prev.auditLogs, {
+          id: uuidv4(),
+          userId: currentUser?.id || 'system',
+          action, entityType, entityId,
+          beforeJson: before ? JSON.stringify(before) : undefined,
+          afterJson: after ? JSON.stringify(after) : undefined,
+          timestamp: new Date().toISOString(),
+        }],
+      };
+      return next;
+    });
+  }, [currentUser]);
 
-  const login = useCallback(async (
-    email: string,
-    password: string,
-    token: string,
-    bootstrapName?: string,
-    recoverSuperAdmin?: boolean,
-    rememberToken?: boolean
-  ): Promise<boolean> => {
+  const login = useCallback(async (email: string, password: string): Promise<boolean> => {
     try {
-      const session = await loginUser(email, password, token, bootstrapName, recoverSuperAdmin, rememberToken);
-      if (!session) return false;
+      const session = await loginUser(email, password);
       setSyncStatus('loading');
       setData(session.data);
       setCurrentUser(session.user);
@@ -162,11 +175,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       setSyncStatus('idle');
       return true;
     } catch (error) {
+      const status = (error as Error & { status?: number }).status;
+      if (status === 401) return false;
+      if (currentUser === null) await logoutUser();
       setSyncStatus('error');
       setSyncError((error as Error).message);
       throw error;
     }
-  }, []);
+  }, [currentUser]);
 
   const logout = useCallback(async () => {
     try {
@@ -222,7 +238,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   return (
     <AuthContext.Provider value={{
       currentUser: signedInUser, data: visibleData, syncStatus, syncError,
-      login, logout, createUserAccount, changeUserPassword, updateData, addAuditLog, can,
+      isApiConfigured: isApiConfigured(),
+      login, logout, createUserAccount, changeUserPassword, updateData, addAuditLog, can, reloadFromGitHub,
     }}>
       {children}
     </AuthContext.Provider>

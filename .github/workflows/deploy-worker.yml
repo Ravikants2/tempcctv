@@ -1,0 +1,66 @@
+name: Deploy iON CCTV API Worker
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - ".github/workflows/deploy-worker.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ion-cctv-worker
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Publish Worker and update server-side secrets
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          DATA_PAT: ${{ secrets.DATA_PAT }}
+          SESSION_SECRET: ${{ secrets.SESSION_SECRET }}
+          BOOTSTRAP_ADMIN_EMAIL: ${{ secrets.BOOTSTRAP_ADMIN_EMAIL }}
+          BOOTSTRAP_ADMIN_PASSWORD: ${{ secrets.BOOTSTRAP_ADMIN_PASSWORD }}
+        run: |
+          : "${CLOUDFLARE_API_TOKEN:?Add CLOUDFLARE_API_TOKEN to repository Actions secrets}"
+          : "${CLOUDFLARE_ACCOUNT_ID:?Add CLOUDFLARE_ACCOUNT_ID to repository Actions secrets}"
+          : "${DATA_PAT:?Add DATA_PAT scoped to the private data repository}"
+          : "${SESSION_SECRET:?Add SESSION_SECRET to repository Actions secrets}"
+          if [ "${#SESSION_SECRET}" -lt 32 ]; then
+            echo "SESSION_SECRET must contain at least 32 characters."
+            exit 1
+          fi
+          if [ -n "$BOOTSTRAP_ADMIN_EMAIL" ] || [ -n "$BOOTSTRAP_ADMIN_PASSWORD" ]; then
+            : "${BOOTSTRAP_ADMIN_EMAIL:?Set both bootstrap admin secrets, or neither}"
+            : "${BOOTSTRAP_ADMIN_PASSWORD:?Set both bootstrap admin secrets, or neither}"
+          fi
+          if [ -n "$BOOTSTRAP_ADMIN_PASSWORD" ] && [ "${#BOOTSTRAP_ADMIN_PASSWORD}" -lt 12 ]; then
+            echo "BOOTSTRAP_ADMIN_PASSWORD must contain at least 12 characters."
+            exit 1
+          fi
+          npm test -- worker/src/data-api.test.js
+          npx --yes wrangler@4 deploy --config worker/wrangler.toml
+          printf '%s' "$DATA_PAT" | npx --yes wrangler@4 secret put DATA_PAT --config worker/wrangler.toml
+          printf '%s' "$SESSION_SECRET" | npx --yes wrangler@4 secret put SESSION_SECRET --config worker/wrangler.toml
+          if [ -n "$BOOTSTRAP_ADMIN_EMAIL" ]; then
+            printf '%s' "$BOOTSTRAP_ADMIN_EMAIL" | npx --yes wrangler@4 secret put BOOTSTRAP_ADMIN_EMAIL --config worker/wrangler.toml
+            printf '%s' "$BOOTSTRAP_ADMIN_PASSWORD" | npx --yes wrangler@4 secret put BOOTSTRAP_ADMIN_PASSWORD --config worker/wrangler.toml
+          fi

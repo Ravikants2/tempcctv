@@ -1,43 +1,48 @@
-# iON CCTV GitHub-backed demo
+# iON CCTV demo
 
 **App URL:** https://ravikants2.github.io/tempcctv/
 
-The public GitHub Pages site uses the private `Ravikants2/ion-cctv-private-data` repository (`data` branch, `db.json`) for application data and app user accounts. The browser calls the GitHub API directly. There is no Cloudflare Worker or other application server.
+The public GitHub Pages app talks to a Cloudflare Worker API. The Worker reads and writes `Ravikants2/ion-cctv-private-data` (`data` branch, `db.json`) using a repo-scoped GitHub token held as a Cloudflare Worker secret. App users sign in with their existing email and password; users do not need a GitHub account or token.
 
-## Sign in
+## Existing accounts and first Super Admin
 
-Each operator needs:
+The Worker migration preserves existing user IDs and valid PBKDF2 password hashes. If legacy records contain plaintext passwords, the Worker replaces them with PBKDF2 hashes before saving and never returns hashes to the browser. The existing Super Admin can then create accounts and reset passwords from **User Management**.
 
-1. An existing app user ID (email) and password from the private database.
-2. Their own GitHub fine-grained personal access token, scoped only to `ion-cctv-private-data` with **Contents: Read and write** permission.
-3. GitHub account access to the private data repository. An organization may need to approve the token.
+If the private database does not contain a Super Admin with a PBKDF2 password hash, configure both `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` as repository Actions secrets. On the first API request, the Worker creates or upgrades the account matching that email; an existing matching account keeps its ID. Use a password with at least 12 characters. These bootstrap secrets are optional once the database already has a valid Super Admin.
 
-The app reuses user accounts stored in `db.json`. If there is no Super Admin with a saved password, the first person who signs in with a repository token and a password of at least 12 characters creates the initial Super Admin. Existing accounts and IDs are kept. The **Recover Super Admin** option can create or reset an admin when authorized repository access is available. Super Admins can add users and reset their passwords from **User Management**.
+## Configure deployment
 
-Never put a GitHub token or password in source code, a public repository, a backup, or a chat message. The sign-in form can remember a token in that browser profile's local storage, so it remains available after signing out and closing the tab. Anyone using the browser profile and scripts running on the site can access it. Do not enable this on shared or untrusted devices. Uncheck the option at a successful sign-in to remove the remembered token, or revoke it in GitHub if exposed.
+The GitHub Actions workflows publish the Worker and GitHub Pages app. Before deploying, configure the following in the public app repository under **Settings → Secrets and variables → Actions**. Never put secret values in source, workflow files, chat messages, or the private data database.
 
-## Important access limitations
+### Repository secrets
 
-This is a demo architecture, not secure multi-user authorization. Everyone who can use a token with write access to the private data repository can read and modify the entire database and its password hashes through GitHub, regardless of their app role. App roles and zones only restrict the user interface; they do not enforce permissions on the repository or GitHub API. Password hashes use PBKDF2, but anyone with the private database can attempt offline password guesses. Use unique, strong passwords and do not store confidential, personal, or regulated information here.
+- `CLOUDFLARE_API_TOKEN` — Cloudflare API token with permission to deploy Workers for the target account.
+- `CLOUDFLARE_ACCOUNT_ID` — Cloudflare account ID.
+- `DATA_PAT` — a fine-grained GitHub token scoped only to `ion-cctv-private-data`, with **Contents: Read and write** permission. The deployment workflow installs it as the Worker secret `DATA_PAT`.
+- `SESSION_SECRET` — a unique random signing secret of at least 32 characters. Keep it private; rotating it signs out all users.
+- `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` — optional, but set both if a valid Super Admin account is not already in `db.json`.
 
-Writes are saved as GitHub commits. GitHub API availability, rate limits, repository policy, and concurrent edits can affect sign-in and saves. If another user saves first, reload the latest data and reapply the change. There is no offline queue or server-side transaction.
+The Worker uses the repository owner, name, branch, and app origin configured in [worker/wrangler.toml](./worker/wrangler.toml). Observability is disabled in this configuration. Login requests are rate-limited to 10 attempts per minute per IP; Cloudflare rate limits are approximate and local to each Cloudflare location.
 
-The app does not connect to Cloudflare or Gemini. AI chat is not available in this demo.
+### Repository variable
 
-The former public `data` branch was removed after application data had been publicly accessible. Deleting a branch cannot remove copies, forks, clones, or all historical objects. Treat any information previously stored there as exposed and rotate credentials that may have been present.
+After the first successful Worker deployment, copy its `workers.dev` URL from Cloudflare and add it as the repository Actions variable `VITE_API_ENDPOINT`. Then run the Pages workflow again (or push another change). This value is public configuration, not a secret. The Pages workflow fails rather than publishing an app without an API endpoint.
+
+## Access and prototype limitations
+
+The browser stores only an eight-hour signed app session in session storage. The Worker keeps the GitHub data token server-side and authenticates app-user API requests. Super Admin-only endpoints protect account and access-role management. However, the prototype does not enforce every feature permission or zone restriction in the API: any signed-in app user can access the full operational dataset. Repository collaborators and Cloudflare administrators can also access the private database or its password hashes, which can be attacked offline. Use unique strong passwords and do not store confidential, personal, or regulated information in this demo.
+
+The private data repository must remain private. The former public `data` branch was removed after application data had been publicly accessible. Deleting a branch cannot remove copies, forks, clones, or all historical objects. Treat any information previously stored there as exposed and rotate credentials that may have been present.
+
+Cloudflare Worker Observability and the Gemini integration are not enabled. AI chat is not available in this demo.
 
 ## Run locally
 
 ```sh
 npm ci
+$env:VITE_API_ENDPOINT = "https://<worker-name>.<account-subdomain>.workers.dev"
 npm run dev
 ```
-
-The local Vite server prints its URL, usually `http://localhost:5173/tempcctv/`.
-
-## Deploy
-
-The `main` branch deploys the static site to GitHub Pages through `.github/workflows/deploy.yml`. In repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The build workflow needs no deployment secrets. App users need their own GitHub token the first time they sign in, or again after choosing not to remember it.
 
 ## Features
 
@@ -46,4 +51,4 @@ The `main` branch deploys the static site to GitHub Pages through `.github/workf
 - Installation records, exam schedules, quotations, and approval flows
 - App user accounts, passwords, roles, and groups stored in the private data repo
 - Excel/PDF export and JSON backup/restore
-- Direct GitHub API access to the private app database
+- Authenticated API access through the Cloudflare Worker

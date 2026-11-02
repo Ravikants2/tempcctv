@@ -1,0 +1,20 @@
+name = "ion-cctv-tempcctv"
+main = "src/index.js"
+compatibility_date = "2025-06-01"
+
+[observability]
+enabled = false
+
+[vars]
+ALLOWED_ORIGINS = "https://ravikants2.github.io"
+DATA_REPO_OWNER = "Ravikants2"
+DATA_REPO_NAME = "ion-cctv-private-data"
+DATA_BRANCH = "data"
+
+[[ratelimits]]
+name = "LOGIN_RATE_LIMITER"
+namespace_id = "1001"
+
+  [ratelimits.simple]
+  limit = 10
+  period = 60

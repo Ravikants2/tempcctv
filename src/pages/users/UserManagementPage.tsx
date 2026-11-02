@@ -434,7 +434,7 @@ export default function UserManagementPage() {
       </div>
 
       <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
-        App roles only control this interface. Anyone with a GitHub token that can write to the private repository can read and change all records and account hashes.
+        This prototype authenticates users through the Worker, but feature and zone restrictions are not enforced for every data API operation. Any signed-in app user may access the full operational dataset. Do not store confidential information here.
       </div>
 
       {alert && <div className="mb-4"><Alert type={alert.type} onClose={() => setAlert(null)}>{alert.message}</Alert></div>}
