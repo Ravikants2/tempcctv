@@ -73,6 +73,38 @@ export function getInstallationStats(
   return { examDays: uniqueDates.length, totalCandidates, perCandidateCost, uniqueDates };
 }
 
+export function getRequirementExamDetails(
+  requirements: RequirementMaster[],
+  installations: InstallationRecord[],
+  examDates: ExamDateDetail[]
+): RequirementMaster[] {
+  const installationRequirementIds = new Map(
+    installations.map(installation => [installation.id, installation.requirementId])
+  );
+  const datesByRequirement = new Map<string, ExamDateDetail[]>();
+  examDates.forEach(date => {
+    const requirementId = installationRequirementIds.get(date.installationRecordId);
+    if (!requirementId) return;
+    const dates = datesByRequirement.get(requirementId) || [];
+    dates.push(date);
+    datesByRequirement.set(requirementId, dates);
+  });
+
+  return requirements.map(requirement => {
+    const recordDates = datesByRequirement.get(requirement.id);
+    if (!recordDates?.length) return requirement;
+    const examDate = [...new Set(recordDates
+      .map(date => normalizeExamDate(date.examDate) || date.examDate))]
+      .sort((left, right) => left.localeCompare(right))
+      .join(', ');
+    const scheduledCandidates = recordDates.reduce(
+      (total, date) => total + date.scheduledCandidates,
+      0
+    );
+    return { ...requirement, examDate, scheduledCandidates };
+  });
+}
+
 export function applyDashboardFilters(
   installations: InstallationRecord[],
   requirements: RequirementMaster[],

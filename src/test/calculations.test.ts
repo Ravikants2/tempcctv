@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   getInstallationStats,
+  getRequirementExamDetails,
   getDashboardKPIs,
   applyDashboardFilters,
   getRequirementCompletion,
@@ -44,6 +45,22 @@ const examDates: ExamDateDetail[] = [
   { id: 'ed3', installationRecordId: 'i2', examDate: '2024-03-01', scheduledCandidates: 80 },
   { id: 'ed4', installationRecordId: 'i2', examDate: '2024-03-03', scheduledCandidates: 60 },
 ];
+
+describe('getRequirementExamDetails', () => {
+  it('fills missing requirement dates and candidate totals from its installation records', () => {
+    const details = getRequirementExamDetails([req1], [inst1], examDates);
+    expect(details[0].examDate).toBe('2024-03-01, 2024-03-02');
+    expect(details[0].scheduledCandidates).toBe(250);
+  });
+
+  it('keeps requirement details when no record schedule is available', () => {
+    const requirement = { ...req1, examDate: '2024-04-01', scheduledCandidates: 40 };
+    expect(getRequirementExamDetails([requirement], [inst1], [])[0]).toMatchObject({
+      examDate: '2024-04-01',
+      scheduledCandidates: 40,
+    });
+  });
+});
 
 const vendors: VendorMaster[] = [
   { id: 'v1', zone: 'North', vendorName: 'Vendor A', createdBy: 'u1', createdAt: '2024-01-01T00:00:00Z', updatedAt: '2024-01-01T00:00:00Z' },

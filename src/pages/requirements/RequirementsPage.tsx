@@ -10,6 +10,7 @@ import type { RequirementMaster } from '../../types';
 import { Download, Upload, Trash2, Plus } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { normalizeExamDate } from '../../utils/dates';
+import { getRequirementExamDetails } from '../../utils/calculations';
 
 const PAGE_SIZE = 10;
 
@@ -37,6 +38,11 @@ export default function RequirementsPage() {
   const [page, setPage] = useState(1);
 
   const scopedRequirements = data.requirements.filter(r => currentUser?.role !== 'zonal_user' || r.zone === currentUser.zone);
+  const requirementsWithRecordDetails = getRequirementExamDetails(
+    scopedRequirements,
+    data.installations,
+    data.examDates
+  );
   const clients = [...new Set(scopedRequirements.map(r => r.clientName))].sort();
   const exams = [...new Set(scopedRequirements.filter(r => !filterClient || r.clientName === filterClient).map(r => r.examName))].sort();
   const zones = [...new Set(scopedRequirements.map(r => r.zone))].sort();
@@ -46,7 +52,7 @@ export default function RequirementsPage() {
   const cities = [...new Set(scopedRequirements
     .filter(r => (!filterZone || r.zone === filterZone) && (!filterState || r.state === filterState))
     .map(r => r.city))].sort();
-  const filtered = scopedRequirements.filter(r => {
+  const filtered = requirementsWithRecordDetails.filter(r => {
     if (filterClient && r.clientName !== filterClient) return false;
     if (filterExam && r.examName !== filterExam) return false;
     if (filterZone && r.zone !== filterZone) return false;
@@ -309,7 +315,9 @@ export default function RequirementsPage() {
                 <td className="px-4 py-3">{r.city}</td>
                 <td className="px-4 py-3 font-mono text-xs">{r.tcCode}</td>
                 <td className="px-4 py-3">{r.tcName}</td>
-                <td className="px-4 py-3">{r.examDate ? normalizeExamDate(r.examDate) : '—'}</td>
+                <td className="px-4 py-3">{r.examDate
+                  ? r.examDate.split(', ').map(date => normalizeExamDate(date) || date).join(', ')
+                  : '—'}</td>
                 <td className="px-4 py-3">{r.scheduledCandidates?.toLocaleString('en-IN') ?? '—'}</td>
                 <td className="px-4 py-3">
                   {can('delete_requirements') && (
