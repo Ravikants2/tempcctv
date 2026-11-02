@@ -433,10 +433,6 @@ export default function UserManagementPage() {
         {accessTab === 'groups' && <Button onClick={startNewGroup}><Plus size={14} /> Create Group</Button>}
       </div>
 
-      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
-        This prototype authenticates users through the Worker, but feature and zone restrictions are not enforced for every data API operation. Any signed-in app user may access the full operational dataset. Do not store confidential information here.
-      </div>
-
       {alert && <div className="mb-4"><Alert type={alert.type} onClose={() => setAlert(null)}>{alert.message}</Alert></div>}
 
       <div className="mb-4 flex gap-2 border-b border-slate-200">

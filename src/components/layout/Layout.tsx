@@ -1,5 +1,5 @@
 import React, { useState, useRef } from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { exportBackup, importBackup } from '../../utils/storage';
 import { PageExportActions } from './PageExportActions';
@@ -27,6 +27,7 @@ const navItems = [
 export function Layout({ children }: { children: React.ReactNode }) {
   const { currentUser, logout, data, syncStatus, syncError, updateData, can } = useAuth();
   const navigate = useNavigate();
+  const location = useLocation();
   const [mobileOpen, setMobileOpen]   = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const restoreRef = useRef<HTMLInputElement>(null);
@@ -168,10 +169,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
       </header>
 
       <main className="flex-1 max-w-screen-2xl mx-auto w-full px-4 py-7 sm:px-6 lg:px-8">
-        <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
-          GitHub-backed demo: data is stored in a private repository. Every repository collaborator can access all records; app roles are not a security boundary.
-        </div>
-        <PageExportActions />
+        <PageExportActions showExcel={!location.pathname.endsWith('/requirements')} />
         {children}
       </main>
     </div>

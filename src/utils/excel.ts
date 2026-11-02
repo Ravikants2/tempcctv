@@ -24,6 +24,24 @@ export function downloadTemplate(type: 'requirement' | 'vendor' | 'installation'
   XLSX.writeFile(wb, `${type}-template.xlsx`);
 }
 
+export function exportRequirementsToExcel(requirements: RequirementMaster[]): void {
+  const rows = requirements.map(requirement => ({
+    'Zone': requirement.zone,
+    'State': requirement.state,
+    'City': requirement.city,
+    'TC Code': requirement.tcCode,
+    'TC Name': requirement.tcName,
+    'Client Name': requirement.clientName,
+    'Exam Name': requirement.examName,
+  }));
+  const headers = ['Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client Name', 'Exam Name'];
+  const worksheet = XLSX.utils.aoa_to_sheet([headers]);
+  XLSX.utils.sheet_add_json(worksheet, rows, { origin: 'A2', skipHeader: true });
+  const workbook = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(workbook, worksheet, 'Requirements');
+  XLSX.writeFile(workbook, `ion-cctv-requirements-${new Date().toISOString().slice(0, 10)}.xlsx`);
+}
+
 export function parseRequirementFile(file: File): Promise<Partial<RequirementMaster>[]> {
   return new Promise((resolve, reject) => {
     const reader = new FileReader();

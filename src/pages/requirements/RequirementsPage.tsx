@@ -5,7 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/FormFields';
 import { Alert, Badge, ConfirmDialog, Modal } from '../../components/ui/index';
-import { downloadTemplate, parseRequirementFile } from '../../utils/excel';
+import { downloadTemplate, exportRequirementsToExcel, parseRequirementFile } from '../../utils/excel';
 import type { RequirementMaster } from '../../types';
 import { Download, Upload, Trash2, Plus } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
@@ -155,6 +155,16 @@ export default function RequirementsPage() {
     setAlert({ type: 'success', msg: 'Requirement added.' });
   };
 
+  const handleExport = () => {
+    try {
+      exportRequirementsToExcel(filtered);
+      addAuditLog('EXPORT', 'RequirementMaster', 'filtered-requirements');
+    } catch (error) {
+      console.error('Failed to export filtered requirements.', error);
+      setAlert({ type: 'error', msg: 'Could not export requirements to Excel. Please try again.' });
+    }
+  };
+
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -164,6 +174,9 @@ export default function RequirementsPage() {
           <p className="mt-1 text-sm text-slate-500">Browse and manage exam-centre requirements.</p>
         </div>
         <div className="flex gap-2 flex-wrap">
+          <Button variant="outline" size="sm" onClick={handleExport}>
+            <Download size={14} /> Export Excel ({filtered.length})
+          </Button>
           <Button variant="outline" size="sm" onClick={() => downloadTemplate('requirement')}>
             <Download size={14} /> Template
           </Button>
