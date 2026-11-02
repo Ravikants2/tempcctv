@@ -7,6 +7,7 @@ const DATA_BRANCH = 'data';
 const DATA_PATH = 'db.json';
 const SESSION_TOKEN_KEY = 'ion_github_data_token';
 const SESSION_USER_KEY = 'ion_cctv_user';
+const REMEMBERED_TOKEN_KEY = 'ion_github_data_token_remembered';
 const PASSWORD_ITERATIONS = 100_000;
 
 interface StoredUser extends User {
@@ -40,6 +41,14 @@ let pendingWrite: Promise<void> = Promise.resolve();
 
 function getSessionToken(): string {
   return sessionStorage.getItem(SESSION_TOKEN_KEY) || '';
+}
+
+export function getRememberedToken(): string {
+  return localStorage.getItem(REMEMBERED_TOKEN_KEY) || '';
+}
+
+export function forgetRememberedToken(): void {
+  localStorage.removeItem(REMEMBERED_TOKEN_KEY);
 }
 
 function githubApiError(message: string, status: number): Error & { status: number } {
@@ -329,7 +338,8 @@ export async function loginUser(
   password: string,
   token: string,
   bootstrapName = 'Super Admin',
-  recoverSuperAdmin = false
+  recoverSuperAdmin = false,
+  rememberToken = false
 ): Promise<{ user: User; data: AppData } | null> {
   const cleanEmail = email.trim().toLowerCase();
   if (!cleanEmail || !password || !token) throw new Error('Enter your user ID, password, and GitHub token.');
@@ -375,6 +385,11 @@ export async function loginUser(
   await writeDatabase(database, token);
   sessionStorage.setItem(SESSION_TOKEN_KEY, token);
   sessionStorage.setItem(SESSION_USER_KEY, user.id);
+  if (rememberToken) {
+    localStorage.setItem(REMEMBERED_TOKEN_KEY, token);
+  } else {
+    forgetRememberedToken();
+  }
   return { user: getPublicUser(user), data: getPublicData(database) };
 }
 

@@ -5,13 +5,15 @@ import { Input } from '../components/ui/FormFields';
 import { Button } from '../components/ui/Button';
 import { Alert } from '../components/ui/index';
 import { Activity, ArrowRight, Camera, ShieldAlert } from 'lucide-react';
+import { getRememberedToken } from '../utils/storage';
 
 export default function LoginPage() {
   const { login } = useAuth();
   const navigate = useNavigate();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [githubToken, setGithubToken] = useState('');
+  const [githubToken, setGithubToken] = useState(getRememberedToken);
+  const [rememberToken, setRememberToken] = useState(true);
   const [name, setName] = useState('');
   const [recoverAdmin, setRecoverAdmin] = useState(false);
   const [error, setError] = useState('');
@@ -22,7 +24,7 @@ export default function LoginPage() {
     setError('');
     setLoading(true);
     try {
-      const signedIn = await login(email, password, githubToken, name, recoverAdmin);
+      const signedIn = await login(email, password, githubToken, name, recoverAdmin, rememberToken);
       if (signedIn) navigate('/dashboard/executive');
       else setError('Invalid user ID or password.');
     } catch (cause) {
@@ -90,7 +92,7 @@ export default function LoginPage() {
             </div>
 
             <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-900">
-              Anyone with write access to the private repository can read or change all app data, including account password hashes. App roles only control the interface; they are not a security boundary. A repository token is kept in this browser tab's session storage and is never saved in the public app repository.
+              Anyone with write access to the private repository can read or change all app data, including account password hashes. App roles only control the interface; they are not a security boundary. If you choose to remember the token, it is stored in this browser profile and can be accessed by anyone using this device or by malicious scripts running on this site.
             </div>
 
             {error && <div className="mb-5"><Alert type="error" onClose={() => setError('')}>{error}</Alert></div>}
@@ -103,6 +105,12 @@ export default function LoginPage() {
               <Input label="GitHub fine-grained token" type="password" value={githubToken}
                 onChange={event => setGithubToken(event.target.value)} required autoComplete="off"
                 placeholder="github_pat_…" />
+              <label className="flex items-start gap-2 text-xs leading-5 text-slate-600">
+                <input type="checkbox" checked={rememberToken}
+                  onChange={event => setRememberToken(event.target.checked)}
+                  className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                <span>Remember my GitHub token on this device so I do not have to enter it next time. Do not select this on a shared or untrusted device.</span>
+              </label>
               <details className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
                 <summary className="cursor-pointer font-medium text-slate-700">First Super Admin setup</summary>
                 <p className="mt-2 leading-5">

@@ -118,6 +118,31 @@ describe('GitHub-backed authentication', () => {
     expect(sessionStorage.getItem('ion_github_data_token')).toBeNull();
   });
 
+  it('remembers the GitHub token only when requested and keeps it across sign-out', async () => {
+    await loginUser(
+      'admin@example.com',
+      'secure-demo-password',
+      'github_pat_test_secret',
+      'Admin',
+      false,
+      true
+    );
+    expect(localStorage.getItem('ion_github_data_token_remembered')).toBe('github_pat_test_secret');
+
+    await logoutUser();
+    expect(localStorage.getItem('ion_github_data_token_remembered')).toBe('github_pat_test_secret');
+
+    await loginUser(
+      'admin@example.com',
+      'secure-demo-password',
+      'github_pat_test_secret',
+      'Admin',
+      false,
+      false
+    );
+    expect(localStorage.getItem('ion_github_data_token_remembered')).toBeNull();
+  });
+
   it('resets the existing Super Admin password without changing the user ID', async () => {
     const original = await loginUser('admin@example.com', 'original-admin-password', 'github_pat_test_secret');
     await logoutUser();

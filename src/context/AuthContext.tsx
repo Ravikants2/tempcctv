@@ -24,7 +24,8 @@ interface AuthContextType {
     password: string,
     token: string,
     bootstrapName?: string,
-    recoverSuperAdmin?: boolean
+    recoverSuperAdmin?: boolean,
+    rememberToken?: boolean
   ) => Promise<boolean>;
   logout: () => Promise<void>;
   createUserAccount: (user: User, password: string) => Promise<User>;
@@ -148,10 +149,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     password: string,
     token: string,
     bootstrapName?: string,
-    recoverSuperAdmin?: boolean
+    recoverSuperAdmin?: boolean,
+    rememberToken?: boolean
   ): Promise<boolean> => {
     try {
-      const session = await loginUser(email, password, token, bootstrapName, recoverSuperAdmin);
+      const session = await loginUser(email, password, token, bootstrapName, recoverSuperAdmin, rememberToken);
       if (!session) return false;
       setSyncStatus('loading');
       setData(session.data);

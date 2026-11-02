@@ -14,7 +14,7 @@ Each operator needs:
 
 The app reuses user accounts stored in `db.json`. If there is no Super Admin with a saved password, the first person who signs in with a repository token and a password of at least 12 characters creates the initial Super Admin. Existing accounts and IDs are kept. The **Recover Super Admin** option can create or reset an admin when authorized repository access is available. Super Admins can add users and reset their passwords from **User Management**.
 
-Never put a GitHub token or password in source code, a public repository, a backup, or a chat message. The GitHub token is kept in the current browser tab's session storage and removed when signing out. Revoke it in GitHub if it is exposed.
+Never put a GitHub token or password in source code, a public repository, a backup, or a chat message. The sign-in form can remember a token in that browser profile's local storage, so it remains available after signing out and closing the tab. Anyone using the browser profile and scripts running on the site can access it. Do not enable this on shared or untrusted devices. Uncheck the option at a successful sign-in to remove the remembered token, or revoke it in GitHub if exposed.
 
 ## Important access limitations
 
@@ -37,7 +37,7 @@ The local Vite server prints its URL, usually `http://localhost:5173/tempcctv/`.
 
 ## Deploy
 
-The `main` branch deploys the static site to GitHub Pages through `.github/workflows/deploy.yml`. In repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The build workflow needs no deployment secrets. App users still need their own GitHub tokens at sign-in.
+The `main` branch deploys the static site to GitHub Pages through `.github/workflows/deploy.yml`. In repository settings, set **Pages → Build and deployment → Source** to **GitHub Actions**. The build workflow needs no deployment secrets. App users need their own GitHub token the first time they sign in, or again after choosing not to remember it.
 
 ## Features
 
