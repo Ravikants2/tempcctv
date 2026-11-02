@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   getInstallationStats,
   getRequirementExamDetails,
+  groupRequirementExamDetails,
   getDashboardKPIs,
   applyDashboardFilters,
   getRequirementCompletion,
@@ -47,10 +48,13 @@ const examDates: ExamDateDetail[] = [
 ];
 
 describe('getRequirementExamDetails', () => {
-  it('fills missing requirement dates and candidate totals from its installation records', () => {
+  it('returns one requirement row per record exam date with its candidate count', () => {
     const details = getRequirementExamDetails([req1], [inst1], examDates);
-    expect(details[0].examDate).toBe('2024-03-01, 2024-03-02');
-    expect(details[0].scheduledCandidates).toBe(250);
+    expect(details).toHaveLength(2);
+    expect(details.map(detail => [detail.examDate, detail.scheduledCandidates])).toEqual([
+      ['2024-03-01', 100],
+      ['2024-03-02', 150],
+    ]);
   });
 
   it('keeps requirement details when no record schedule is available', () => {
@@ -59,6 +63,51 @@ describe('getRequirementExamDetails', () => {
       examDate: '2024-04-01',
       scheduledCandidates: 40,
     });
+  });
+
+  it('combines duplicate records for the same exam date but keeps dates separate', () => {
+    const secondInstallation: InstallationRecord = { ...inst1, id: 'i1-second' };
+    const details = getRequirementExamDetails(
+      [req1],
+      [inst1, secondInstallation],
+      [
+        { id: 'date-a', installationRecordId: 'i1', examDate: '2024-03-01', scheduledCandidates: 100 },
+        { id: 'date-b', installationRecordId: 'i1-second', examDate: '2024-03-01', scheduledCandidates: 25 },
+        { id: 'date-c', installationRecordId: 'i1-second', examDate: '2024-03-02', scheduledCandidates: 150 },
+      ]
+    );
+
+    expect(details.map(detail => [detail.examDate, detail.scheduledCandidates])).toEqual([
+      ['2024-03-01', 125],
+      ['2024-03-02', 150],
+    ]);
+  });
+});
+
+describe('groupRequirementExamDetails', () => {
+  it('groups a TC once, hides blank duplicates when dates exist, and sums candidates by date', () => {
+    const groups = groupRequirementExamDetails([
+      req1,
+      { ...req1, id: 'r1-date-one', examDate: '2024-03-01', scheduledCandidates: 100 },
+      { ...req1, id: 'r1-date-one-duplicate', examDate: '2024-03-01', scheduledCandidates: 25 },
+      { ...req1, id: 'r1-date-two', examDate: '2024-03-02', scheduledCandidates: 150 },
+    ]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].requirementIds).toHaveLength(4);
+    expect(groups[0].requirement.examDate).toBe('2024-03-01');
+    expect(groups[0].examDates).toEqual([
+      { examDate: '2024-03-01', scheduledCandidates: 125 },
+      { examDate: '2024-03-02', scheduledCandidates: 150 },
+    ]);
+  });
+
+  it('keeps a single blank-schedule requirement visible', () => {
+    const groups = groupRequirementExamDetails([req1]);
+
+    expect(groups).toHaveLength(1);
+    expect(groups[0].requirement).toBe(req1);
+    expect(groups[0].examDates).toEqual([]);
   });
 });
 

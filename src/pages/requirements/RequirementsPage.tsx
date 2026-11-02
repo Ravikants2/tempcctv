@@ -7,10 +7,11 @@ import { Input, Select } from '../../components/ui/FormFields';
 import { Alert, Badge, ConfirmDialog, Modal } from '../../components/ui/index';
 import { downloadTemplate, exportRequirementsToExcel, parseRequirementFile } from '../../utils/excel';
 import type { RequirementMaster } from '../../types';
-import { Download, Upload, Trash2, Plus } from 'lucide-react';
+import { Download, Eye, Upload, Trash2, Plus } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { normalizeExamDate } from '../../utils/dates';
-import { getRequirementExamDetails } from '../../utils/calculations';
+import { getRequirementExamDetails, groupRequirementExamDetails } from '../../utils/calculations';
+import type { RequirementExamGroup } from '../../utils/calculations';
 
 const PAGE_SIZE = 10;
 
@@ -30,7 +31,8 @@ export default function RequirementsPage() {
   const [filterCity, setFilterCity] = useState('');
   const [filterTcCode, setFilterTcCode] = useState('');
   const [preview, setPreview] = useState<PreviewRow[] | null>(null);
-  const [deleteId, setDeleteId] = useState<string | null>(null);
+  const [deleteIds, setDeleteIds] = useState<string[]>([]);
+  const [viewRequirement, setViewRequirement] = useState<RequirementExamGroup | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [addModal, setAddModal] = useState(false);
   const [form, setForm] = useState<Partial<RequirementMaster>>({});
@@ -67,9 +69,17 @@ export default function RequirementsPage() {
     }
     return true;
   });
-  const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const filteredGroups: RequirementExamGroup[] = groupRequirementExamDetails(filtered);
+  const exportRows = filteredGroups.flatMap(group => group.examDates.length > 0
+    ? group.examDates.map(date => ({
+        ...group.requirement,
+        examDate: date.examDate,
+        scheduledCandidates: date.scheduledCandidates,
+      }))
+    : [group.requirement]);
+  const pageCount = Math.max(1, Math.ceil(filteredGroups.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
-  const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const pageRows = filteredGroups.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -136,22 +146,42 @@ export default function RequirementsPage() {
     setPreview(null);
   };
 
-  const handleDelete = (id: string) => {
-    const inUse = data.installations.some(i => i.requirementId === id);
+  const handleDelete = (ids: string[]) => {
+    const inUse = data.installations.some(i => ids.includes(i.requirementId));
     if (inUse) {
-      setAlert({ type: 'error', msg: 'Cannot delete: requirement is referenced by an installation record.' });
+      setAlert({ type: 'error', msg: 'Cannot delete: this requirement is referenced by an installation record.' });
       return;
     }
-    setDeleteId(id);
+    setDeleteIds(ids);
+  };
+
+  const handleDeleteGroup = (group: RequirementExamGroup) => {
+    const requirement = group.requirement;
+    const requirementIds = scopedRequirements
+      .filter(candidate =>
+        candidate.clientName.trim().toLocaleLowerCase() === requirement.clientName.trim().toLocaleLowerCase() &&
+        candidate.examName.trim().toLocaleLowerCase() === requirement.examName.trim().toLocaleLowerCase() &&
+        candidate.tcCode.trim().toLocaleLowerCase() === requirement.tcCode.trim().toLocaleLowerCase()
+      )
+      .map(candidate => candidate.id);
+    handleDelete(requirementIds);
   };
 
   const confirmDelete = () => {
-    if (!deleteId) return;
-    const req = scopedRequirements.find(r => r.id === deleteId);
-    updateData(prev => ({ ...prev, requirements: prev.requirements.filter(r => r.id !== deleteId) }));
-    addAuditLog('DELETE', 'RequirementMaster', deleteId, req, undefined);
-    setDeleteId(null);
-    setAlert({ type: 'success', msg: 'Requirement deleted.' });
+    if (deleteIds.length === 0) return;
+    const deletedRequirements = scopedRequirements.filter(requirement => deleteIds.includes(requirement.id));
+    updateData(prev => ({
+      ...prev,
+      requirements: prev.requirements.filter(requirement => !deleteIds.includes(requirement.id)),
+    }));
+    deletedRequirements.forEach(requirement =>
+      addAuditLog('DELETE', 'RequirementMaster', requirement.id, requirement, undefined)
+    );
+    setDeleteIds([]);
+    setAlert({
+      type: 'success',
+      msg: `${deletedRequirements.length} requirement entr${deletedRequirements.length === 1 ? 'y' : 'ies'} deleted.`,
+    });
   };
 
   const handleAddSubmit = (e: React.FormEvent) => {
@@ -190,7 +220,7 @@ export default function RequirementsPage() {
 
   const handleExport = () => {
     try {
-      exportRequirementsToExcel(filtered);
+      exportRequirementsToExcel(exportRows);
       addAuditLog('EXPORT', 'RequirementMaster', 'filtered-requirements');
     } catch (error) {
       console.error('Failed to export filtered requirements.', error);
@@ -208,7 +238,7 @@ export default function RequirementsPage() {
         </div>
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExport}>
-            <Download size={14} /> Export Excel ({filtered.length})
+            <Download size={14} /> Export Excel ({exportRows.length})
           </Button>
           <Button variant="outline" size="sm" onClick={() => downloadTemplate('requirement')}>
             <Download size={14} /> Template
@@ -234,7 +264,7 @@ export default function RequirementsPage() {
             <h2 className="text-sm font-semibold text-slate-800">Filter requirements</h2>
             <p className="mt-0.5 text-xs text-slate-500">Narrow results by location, client, exam, or centre.</p>
           </div>
-          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{filtered.length} results</span>
+          <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{filteredGroups.length} results</span>
         </div>
         <div className="flex flex-wrap items-end gap-3">
         <Input aria-label="Search requirements" placeholder="Search requirements…" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} className="w-52" />
@@ -299,15 +329,18 @@ export default function RequirementsPage() {
         <div className="overflow-x-auto">
         <SortableTable className="w-full text-sm">
           <thead><tr className="bg-gray-50 border-b">
-            {['Client Name','Exam Name','Zone','State','City','TC Code','TC Name','Date of Exam','Candidate Count','Actions'].map(h => (
+            {['Client Name','Exam Name','Zone','State','City','TC Code','TC Name','Exam Dates','Total Candidates','Actions'].map(h => (
               <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
             ))}
           </tr></thead>
           <tbody>
-            {filtered.length === 0 ? (
+            {filteredGroups.length === 0 ? (
               <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No requirements found.</td></tr>
-            ) : pageRows.map(r => (
-              <tr key={r.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
+            ) : pageRows.map(group => {
+              const { requirement: r, examDates: schedules } = group;
+              const totalCandidates = schedules.reduce((total, date) => total + date.scheduledCandidates, 0);
+              return (
+              <tr key={`${r.clientName}-${r.examName}-${r.tcCode}`} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
                 <td className="px-4 py-3">{r.clientName}</td>
                 <td className="px-4 py-3">{r.examName}</td>
                 <td className="px-4 py-3">{r.zone}</td>
@@ -315,32 +348,93 @@ export default function RequirementsPage() {
                 <td className="px-4 py-3">{r.city}</td>
                 <td className="px-4 py-3 font-mono text-xs">{r.tcCode}</td>
                 <td className="px-4 py-3">{r.tcName}</td>
-                <td className="px-4 py-3">{r.examDate
-                  ? r.examDate.split(', ').map(date => normalizeExamDate(date) || date).join(', ')
-                  : '—'}</td>
-                <td className="px-4 py-3">{r.scheduledCandidates?.toLocaleString('en-IN') ?? '—'}</td>
-                <td className="px-4 py-3">
+                <td className="px-4 py-3">{schedules.length || (r.examDate ? 1 : 0)}</td>
+                <td className="px-4 py-3">{schedules.length > 0
+                  ? totalCandidates.toLocaleString('en-IN')
+                  : r.scheduledCandidates?.toLocaleString('en-IN') ?? '—'}</td>
+                <td className="px-4 py-3"><div className="flex items-center gap-1">
+                  <Button variant="ghost" size="sm" aria-label={`View requirement details for TC ${r.tcCode}`}
+                    onClick={() => setViewRequirement(group)}>
+                    <Eye size={14} />
+                  </Button>
                   {can('delete_requirements') && (
-                    <Button variant="danger" size="sm" onClick={() => handleDelete(r.id)}>
+                    <Button variant="danger" size="sm"
+                      aria-label={`Delete requirement entries for TC ${r.tcCode}`}
+                      onClick={() => handleDeleteGroup(group)}>
                       <Trash2 size={12} />
                     </Button>
                   )}
-                </td>
+                </div></td>
               </tr>
-            ))}
+            );})}
           </tbody>
         </SortableTable>
         </div>
-        <TablePagination page={currentPage} pageSize={PAGE_SIZE} totalItems={filtered.length} onPageChange={setPage} />
+        <TablePagination page={currentPage} pageSize={PAGE_SIZE} totalItems={filteredGroups.length} onPageChange={setPage} />
       </div>
 
       <ConfirmDialog
-        open={!!deleteId}
+        open={deleteIds.length > 0}
         title="Delete Requirement"
-        message="Are you sure you want to delete this requirement? This cannot be undone."
+        message={`Are you sure you want to delete ${deleteIds.length} requirement entr${deleteIds.length === 1 ? 'y' : 'ies'} for this TC? This cannot be undone.`}
         onConfirm={confirmDelete}
-        onCancel={() => setDeleteId(null)}
+        onCancel={() => setDeleteIds([])}
       />
+
+      <Modal
+        open={Boolean(viewRequirement)}
+        onClose={() => setViewRequirement(null)}
+        title="Requirement Details"
+        size="lg"
+      >
+        {viewRequirement && (
+          <div className="space-y-5">
+            <section className="grid gap-3 sm:grid-cols-2">
+              {[
+                ['Client Name', viewRequirement.requirement.clientName],
+                ['Exam Name', viewRequirement.requirement.examName],
+                ['TC Code', viewRequirement.requirement.tcCode],
+                ['TC Name', viewRequirement.requirement.tcName],
+                ['Zone', viewRequirement.requirement.zone],
+                ['State', viewRequirement.requirement.state],
+                ['City', viewRequirement.requirement.city],
+              ].map(([label, value]) => (
+                <div key={label} className="rounded-lg bg-slate-50 p-3">
+                  <p className="text-xs text-slate-500">{label}</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{value}</p>
+                </div>
+              ))}
+            </section>
+            <section>
+              <h3 className="mb-2 font-semibold text-slate-800">Exam Schedule</h3>
+              {viewRequirement.examDates.length > 0 ? (
+                <div className="overflow-x-auto rounded-lg border border-slate-200">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 text-left text-xs uppercase text-slate-600">
+                      <tr>
+                        <th className="px-3 py-2">Date of Exam</th>
+                        <th className="px-3 py-2 text-right">Scheduled Candidates</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {viewRequirement.examDates.map(schedule => (
+                        <tr key={schedule.examDate} className="border-t border-slate-100">
+                          <td className="px-3 py-2">{schedule.examDate}</td>
+                          <td className="px-3 py-2 text-right">{schedule.scheduledCandidates.toLocaleString('en-IN')}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">
+                  No exam dates or candidate counts are available for this requirement.
+                </p>
+              )}
+            </section>
+          </div>
+        )}
+      </Modal>
 
       <Modal open={addModal} onClose={() => { setAddModal(false); setForm({}); setFormError(''); }} title="Add Requirement">
         <form onSubmit={handleAddSubmit} className="grid grid-cols-2 gap-3">
