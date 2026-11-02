@@ -9,6 +9,7 @@ import { downloadTemplate, exportRequirementsToExcel, parseRequirementFile } fro
 import type { RequirementMaster } from '../../types';
 import { Download, Upload, Trash2, Plus } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
+import { normalizeExamDate } from '../../utils/dates';
 
 const PAGE_SIZE = 10;
 
@@ -76,6 +77,13 @@ export default function RequirementsPage() {
         if (!/^\d+$/.test(row.tcCode)) {
           return { ...row, status: 'ERROR', error: 'TC Code must contain numbers only' };
         }
+        if (row.examDate && !normalizeExamDate(row.examDate)) {
+          return { ...row, status: 'ERROR', error: 'Date of Exam is invalid' };
+        }
+        if (row.scheduledCandidates !== undefined &&
+          (!Number.isInteger(row.scheduledCandidates) || row.scheduledCandidates < 0)) {
+          return { ...row, status: 'ERROR', error: 'Candidate Count must be a non-negative whole number' };
+        }
         const existing = scopedRequirements.find(r =>
           r.clientName === row.clientName && r.examName === row.examName && r.tcCode === row.tcCode
         );
@@ -95,11 +103,21 @@ export default function RequirementsPage() {
       let reqs = [...prev.requirements];
       valid.forEach(row => {
         if (row.status === 'UPDATE' && row.id) {
-          reqs = reqs.map(r => r.id === row.id ? { ...r, ...row, updatedAt: new Date().toISOString() } as RequirementMaster : r);
+          reqs = reqs.map(r => r.id === row.id
+            ? {
+                ...r,
+                ...row,
+                examDate: row.examDate || r.examDate,
+                scheduledCandidates: row.scheduledCandidates ?? r.scheduledCandidates,
+                updatedAt: new Date().toISOString(),
+              } as RequirementMaster
+            : r);
         } else {
           const newReq: RequirementMaster = {
             id: uuidv4(), zone: row.zone!, state: row.state!, city: row.city!,
             tcCode: row.tcCode!, tcName: row.tcName!, clientName: row.clientName!, examName: row.examName!,
+            examDate: row.examDate ? normalizeExamDate(row.examDate) || undefined : undefined,
+            scheduledCandidates: row.scheduledCandidates,
             createdBy: currentUser!.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
           };
           reqs.push(newReq);
@@ -139,6 +157,15 @@ export default function RequirementsPage() {
     }
     if (!/^\d+$/.test(tcCode)) {
       setFormError('TC Code must contain numbers only.');
+      return;
+    }
+    if (form.examDate && !normalizeExamDate(form.examDate)) {
+      setFormError('Date of Exam must be a valid date.');
+      return;
+    }
+    if (form.scheduledCandidates !== undefined &&
+      (!Number.isInteger(form.scheduledCandidates) || form.scheduledCandidates < 0)) {
+      setFormError('Candidate Count must be a non-negative whole number.');
       return;
     }
     const dup = scopedRequirements.find(r => r.clientName === clientName && r.examName === examName && r.tcCode === tcCode);
@@ -236,7 +263,10 @@ export default function RequirementsPage() {
           </div>
           <div className="overflow-x-auto max-h-64">
             <SortableTable className="w-full text-xs">
-              <thead><tr className="bg-gray-50">{['Status','Zone','State','City','TC Code','TC Name','Client','Exam','Error'].map(h => <th key={h} className="px-2 py-1 text-left font-medium text-gray-600">{h}</th>)}</tr></thead>
+              <thead><tr className="bg-gray-50">{[
+                'Status', 'Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client', 'Exam',
+                'Date of Exam', 'Candidate Count', 'Error',
+              ].map(h => <th key={h} className="px-2 py-1 text-left font-medium text-gray-600">{h}</th>)}</tr></thead>
               <tbody>
                 {preview.map((r, i) => (
                   <tr key={i} className="border-t">
@@ -244,7 +274,8 @@ export default function RequirementsPage() {
                     <td className="px-2 py-1">{r.zone}</td><td className="px-2 py-1">{r.state}</td>
                     <td className="px-2 py-1">{r.city}</td><td className="px-2 py-1">{r.tcCode}</td>
                     <td className="px-2 py-1">{r.tcName}</td><td className="px-2 py-1">{r.clientName}</td>
-                    <td className="px-2 py-1">{r.examName}</td><td className="px-2 py-1 text-red-600">{r.error}</td>
+                    <td className="px-2 py-1">{r.examName}</td><td className="px-2 py-1">{r.examDate}</td>
+                    <td className="px-2 py-1">{r.scheduledCandidates}</td><td className="px-2 py-1 text-red-600">{r.error}</td>
                   </tr>
                 ))}
               </tbody>
@@ -262,13 +293,13 @@ export default function RequirementsPage() {
         <div className="overflow-x-auto">
         <SortableTable className="w-full text-sm">
           <thead><tr className="bg-gray-50 border-b">
-            {['Client Name','Exam Name','Zone','State','City','TC Code','TC Name','Actions'].map(h => (
+            {['Client Name','Exam Name','Zone','State','City','TC Code','TC Name','Date of Exam','Candidate Count','Actions'].map(h => (
               <th key={h} className="whitespace-nowrap px-4 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
             ))}
           </tr></thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No requirements found.</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No requirements found.</td></tr>
             ) : pageRows.map(r => (
               <tr key={r.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
                 <td className="px-4 py-3">{r.clientName}</td>
@@ -278,6 +309,8 @@ export default function RequirementsPage() {
                 <td className="px-4 py-3">{r.city}</td>
                 <td className="px-4 py-3 font-mono text-xs">{r.tcCode}</td>
                 <td className="px-4 py-3">{r.tcName}</td>
+                <td className="px-4 py-3">{r.examDate ? normalizeExamDate(r.examDate) : '—'}</td>
+                <td className="px-4 py-3">{r.scheduledCandidates?.toLocaleString('en-IN') ?? '—'}</td>
                 <td className="px-4 py-3">
                   {can('delete_requirements') && (
                     <Button variant="danger" size="sm" onClick={() => handleDelete(r.id)}>
@@ -313,6 +346,14 @@ export default function RequirementsPage() {
               {...(field === 'tcCode' ? { inputMode: 'numeric' as const, pattern: '[0-9]*' } : {})}
               required />
           ))}
+          <Input label="Date of Exam" type="date" value={form.examDate || ''}
+            onChange={e => setForm(previous => ({ ...previous, examDate: e.target.value || undefined }))} />
+          <Input label="Candidate Count" type="number" min={0} step={1}
+            value={form.scheduledCandidates ?? ''}
+            onChange={e => setForm(previous => ({
+              ...previous,
+              scheduledCandidates: e.target.value === '' ? undefined : Number(e.target.value),
+            }))} />
           {formError && <div className="col-span-2"><Alert type="error">{formError}</Alert></div>}
           <div className="col-span-2 flex gap-2 justify-end mt-2">
             <Button variant="secondary" type="button" onClick={() => setAddModal(false)}>Cancel</Button>

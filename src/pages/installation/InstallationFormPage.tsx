@@ -5,7 +5,16 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { Alert } from '../../components/ui/index';
-import type { AppData, InstallationRecord, ExamDateDetail, InstallationType, StorageType, StorageUnit, QuoteRevision } from '../../types';
+import type {
+  AppData,
+  ExamDateDetail,
+  InstallationRecord,
+  InstallationType,
+  QuoteRevision,
+  StorageItem,
+  StorageType,
+  StorageUnit,
+} from '../../types';
 import { Plus, Trash2, FileText, Eye } from 'lucide-react';
 import { normalizeExamDate } from '../../utils/dates';
 import { sameZone } from '../../utils/vendorCode';
@@ -14,6 +23,10 @@ interface ExamDateRow {
   id: string;
   examDate: string;
   scheduledCandidates: number;
+}
+
+interface StorageFormRow extends StorageItem {
+  id: string;
 }
 
 export default function InstallationFormPage() {
@@ -36,10 +49,7 @@ export default function InstallationFormPage() {
   const [proxyProvided, setProxyProvided] = useState(false);
   const [internetProvided, setInternetProvided] = useState(false);
   const [storageProvided, setStorageProvided] = useState(false);
-  const [storageType, setStorageType] = useState<StorageType>('Pen Drive');
-  const [storageQuantity, setStorageQuantity] = useState<number | ''>('');
-  const [storageSize, setStorageSize] = useState<number | ''>('');
-  const [storageUnit, setStorageUnit] = useState<StorageUnit>('GB');
+  const [storageItems, setStorageItems] = useState<StorageFormRow[]>([]);
   const [localVendorCost, setLocalVendorCost] = useState<number | ''>('');
   const [minimumCost, setMinimumCost] = useState<number | ''>('');
   const [remarks, setRemarks] = useState('');
@@ -64,10 +74,17 @@ export default function InstallationFormPage() {
       setProxyProvided(existingRecord.proxyProvided);
       setInternetProvided(existingRecord.internetProvided);
       setStorageProvided(existingRecord.storageProvided);
-      if (existingRecord.storageType) setStorageType(existingRecord.storageType);
-      if (existingRecord.storageQuantity !== undefined) setStorageQuantity(existingRecord.storageQuantity);
-      if (existingRecord.storageSize !== undefined) setStorageSize(existingRecord.storageSize);
-      if (existingRecord.storageUnit) setStorageUnit(existingRecord.storageUnit);
+      const previousStorageItems = existingRecord.storageItems?.length
+        ? existingRecord.storageItems
+        : existingRecord.storageProvided
+          ? [{
+              type: existingRecord.storageType || 'Pen Drive',
+              quantity: existingRecord.storageQuantity || 1,
+              size: existingRecord.storageSize || 0,
+              unit: existingRecord.storageUnit || 'GB',
+            }]
+          : [];
+      setStorageItems(previousStorageItems.map(item => ({ ...item, id: uuidv4() })));
       setLocalVendorCost(existingRecord.localVendorCost);
       if (existingRecord.minimumCost !== undefined) setMinimumCost(existingRecord.minimumCost);
       setRemarks(existingRecord.approvalStatus === 'returned' ? '' : existingRecord.remarks || '');
@@ -76,6 +93,19 @@ export default function InstallationFormPage() {
       setExamDates(dates.map(d => ({ id: d.id, examDate: normalizeExamDate(d.examDate) || '', scheduledCandidates: d.scheduledCandidates })));
     }
   }, [existingRecord, data]);
+
+  useEffect(() => {
+    if (isEdit || !selectedReqId) return;
+    const requirement = data.requirements.find(item => item.id === selectedReqId);
+    if (!requirement) return;
+    setExamDates(requirement.examDate || requirement.scheduledCandidates !== undefined
+      ? [{
+          id: uuidv4(),
+          examDate: normalizeExamDate(requirement.examDate || '') || '',
+          scheduledCandidates: requirement.scheduledCandidates || 0,
+        }]
+      : []);
+  }, [data.requirements, isEdit, selectedReqId]);
 
   // Derived data
   const scopedRequirements = data.requirements.filter(r => currentUser?.role !== 'zonal_user' || r.zone === currentUser.zone);
@@ -131,6 +161,33 @@ export default function InstallationFormPage() {
 
   const removeDateRow = (rowId: string) => setExamDates(prev => prev.filter(r => r.id !== rowId));
 
+  const addStorageItem = () => {
+    setStorageProvided(true);
+    setStorageItems(previous => [...previous, {
+      id: uuidv4(),
+      type: 'External HDD',
+      quantity: 1,
+      size: 0,
+      unit: 'TB',
+    }]);
+  };
+
+  const updateStorageItem = <K extends keyof StorageItem>(
+    itemId: string,
+    field: K,
+    value: StorageItem[K]
+  ) => {
+    setStorageItems(previous => previous.map(item =>
+      item.id === itemId ? { ...item, [field]: value } : item
+    ));
+  };
+
+  const removeStorageItem = (itemId: string) => {
+    const next = storageItems.filter(item => item.id !== itemId);
+    setStorageItems(next);
+    if (next.length === 0) setStorageProvided(false);
+  };
+
   // Calculated fields
   const uniqueDates = [...new Set(examDates.map(d => d.examDate).filter(Boolean))];
   const totalCandidates = examDates.reduce((s, d) => s + (Number(d.scheduledCandidates) || 0), 0);
@@ -161,6 +218,13 @@ export default function InstallationFormPage() {
     }
     if (!vendorId) { setAlert({ type: 'error', msg: 'Please select a vendor.' }); return; }
     if (examDates.filter(d => d.examDate).length === 0) { setAlert({ type: 'error', msg: 'At least one exam date is required.' }); return; }
+    if (storageProvided && (storageItems.length === 0 || storageItems.some(item =>
+      !item.type || !Number.isInteger(item.quantity) || item.quantity < 1 ||
+      !Number.isFinite(item.size) || item.size < 0 || !item.unit
+    ))) {
+      setAlert({ type: 'error', msg: 'Complete the type, quantity, size, and unit for each external storage item.' });
+      return;
+    }
     if (localVendorCost === '' || Number(localVendorCost) < 0) { setAlert({ type: 'error', msg: 'Local vendor cost is required.' }); return; }
     if (existingRecord?.approvalStatus === 'returned' && !remarks.trim()) {
       setAlert({ type: 'error', msg: 'Remarks are mandatory when resubmitting a returned quote, including when there are no changes.' });
@@ -195,6 +259,10 @@ export default function InstallationFormPage() {
       const submittedDates = examDates
         .filter(d => d.examDate)
         .map(d => ({ examDate: d.examDate, scheduledCandidates: Number(d.scheduledCandidates) || 0 }));
+      const submittedStorageItems: StorageItem[] = storageProvided
+        ? storageItems.map(({ type, quantity, size, unit }) => ({ type, quantity, size, unit }))
+        : [];
+      const primaryStorage = submittedStorageItems[0];
       const revision: QuoteRevision = {
         id: uuidv4(),
         installationRecordId: recordId,
@@ -241,11 +309,12 @@ export default function InstallationFormPage() {
         cameraCount: Number(cameraCount),
         proxyProvided,
         internetProvided,
-        storageProvided,
-        storageType: storageProvided ? storageType : undefined,
-        storageQuantity: storageProvided && storageQuantity !== '' ? Number(storageQuantity) : undefined,
-        storageSize: storageProvided && storageSize !== '' ? Number(storageSize) : undefined,
-        storageUnit: storageProvided ? storageUnit : undefined,
+        storageProvided: submittedStorageItems.length > 0,
+        storageType: primaryStorage?.type,
+        storageQuantity: primaryStorage?.quantity,
+        storageSize: primaryStorage?.size,
+        storageUnit: primaryStorage?.unit,
+        storageItems: submittedStorageItems,
         localVendorCost: Number(localVendorCost),
         minimumCost: minimumCost !== '' ? Number(minimumCost) : undefined,
         remarks: remarks || undefined,
@@ -331,7 +400,14 @@ export default function InstallationFormPage() {
           </div>
           {selectedReq && (
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 rounded-lg p-3 text-sm">
-              {[['Zone', selectedReq.zone], ['State', selectedReq.state], ['City', selectedReq.city], ['TC Name', selectedReq.tcName]].map(([k, v]) => (
+              {[
+                ['Zone', selectedReq.zone],
+                ['State', selectedReq.state],
+                ['City', selectedReq.city],
+                ['TC Name', selectedReq.tcName],
+                ['Date of Exam', selectedReq.examDate || '—'],
+                ['Candidate Count', selectedReq.scheduledCandidates?.toLocaleString('en-IN') || '—'],
+              ].map(([k, v]) => (
                 <div key={k}><span className="text-xs text-gray-500">{k}</span><p className="font-medium">{v}</p></div>
               ))}
             </div>
@@ -344,6 +420,9 @@ export default function InstallationFormPage() {
             <h2 className="font-semibold text-gray-800">Examination Details</h2>
             <Button type="button" size="sm" onClick={addDateRow}><Plus size={14} /> Add Date</Button>
           </div>
+          {(selectedReq?.examDate || selectedReq?.scheduledCandidates !== undefined) && (
+            <p className="mb-3 text-xs text-slate-500">Exam date and candidate count are prefilled from the requirement and can be adjusted for this record.</p>
+          )}
           {examDates.length === 0 && <p className="text-sm text-gray-400">No exam dates added. At least one is required.</p>}
           <div className="space-y-2">
             {examDates.map(row => (
@@ -400,24 +479,38 @@ export default function InstallationFormPage() {
 
         {/* Storage */}
         <section className="bg-white border rounded-xl p-5 shadow-sm">
-          <h2 className="font-semibold text-gray-800 mb-4">External Storage</h2>
+          <div className="mb-4 flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-gray-800">External Storage</h2>
+            {storageProvided && (
+              <Button type="button" size="sm" variant="outline" onClick={addStorageItem}>
+                <Plus size={14} /> Add Storage
+              </Button>
+            )}
+          </div>
           <label className="flex items-center gap-2 text-sm cursor-pointer mb-4">
-            <input type="checkbox" checked={storageProvided} onChange={e => setStorageProvided(e.target.checked)}
+            <input type="checkbox" checked={storageProvided} onChange={e => {
+              const provided = e.target.checked;
+              setStorageProvided(provided);
+              if (provided && storageItems.length === 0) addStorageItem();
+            }}
               className="w-4 h-4 rounded border-gray-300 text-blue-600 focus:ring-blue-500" />
             External Storage Provided
           </label>
-          {storageProvided && (
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-              <Select label="Storage Type" value={storageType} onChange={e => setStorageType(e.target.value as StorageType)}
+          {storageProvided && storageItems.map((item, index) => (
+            <div key={item.id} className="mb-3 grid grid-cols-2 items-end gap-4 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+              <Select label={`Storage ${index + 1} Type`} value={item.type}
+                onChange={e => updateStorageItem(item.id, 'type', e.target.value as StorageType)}
                 options={[{ value: 'Pen Drive', label: 'Pen Drive' }, { value: 'External HDD', label: 'External HDD' }]} />
-              <Input label="Quantity" type="number" min={1} value={storageQuantity}
-                onChange={e => setStorageQuantity(e.target.value === '' ? '' : Number(e.target.value))} />
-              <Input label="Size" type="number" min={0} step="0.01" value={storageSize}
-                onChange={e => setStorageSize(e.target.value === '' ? '' : Number(e.target.value))} />
-              <Select label="Unit" value={storageUnit} onChange={e => setStorageUnit(e.target.value as StorageUnit)}
+              <Input label="Quantity" type="number" min={1} step={1} value={item.quantity}
+                onChange={e => updateStorageItem(item.id, 'quantity', Number(e.target.value))} />
+              <Input label="Size" type="number" min={0} step="0.01" value={item.size || ''}
+                onChange={e => updateStorageItem(item.id, 'size', Number(e.target.value))} />
+              <Select label="Unit" value={item.unit} onChange={e => updateStorageItem(item.id, 'unit', e.target.value as StorageUnit)}
                 options={[{ value: 'GB', label: 'GB' }, { value: 'TB', label: 'TB' }]} />
+              <Button type="button" variant="ghost" size="sm" onClick={() => removeStorageItem(item.id)}
+                aria-label={`Remove storage ${index + 1}`}><Trash2 size={14} /></Button>
             </div>
-          )}
+          ))}
         </section>
 
         {/* Supporting Info */}

@@ -48,6 +48,8 @@ export interface RequirementMaster {
   tcName: string;
   clientName: string;
   examName: string;
+  examDate?: string;
+  scheduledCandidates?: number;
   createdBy: string;
   createdAt: string;
   updatedAt: string;
@@ -67,6 +69,13 @@ export type InstallationType = 'Full Vendor' | 'Partial Vendor';
 export type StorageType = 'Pen Drive' | 'External HDD';
 export type StorageUnit = 'GB' | 'TB';
 
+export interface StorageItem {
+  type: StorageType;
+  quantity: number;
+  size: number;
+  unit: StorageUnit;
+}
+
 export interface InstallationRecord {
   id: string;
   requirementId: string;
@@ -80,6 +89,7 @@ export interface InstallationRecord {
   storageQuantity?: number;
   storageSize?: number;
   storageUnit?: StorageUnit;
+  storageItems?: StorageItem[];
   localVendorCost: number;
   minimumCost?: number;
   remarks?: string;

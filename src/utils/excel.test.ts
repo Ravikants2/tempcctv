@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx';
+import { strFromU8, unzipSync } from 'fflate';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type {
   ApprovalEvent,
@@ -10,9 +11,12 @@ import type {
 } from '../types';
 import {
   exportApprovalsToExcel,
+  createInstallationTemplate,
   exportRecordsToExcel,
   exportRequirementsToExcel,
   exportVendorsToExcel,
+  parseBulkInstallationFile,
+  parseRequirementFile,
 } from './excel';
 
 const makeRequirement = (index: number): RequirementMaster => ({
@@ -48,6 +52,10 @@ const makeInstallation = (index: number): InstallationRecord => ({
   proxyProvided: true,
   internetProvided: true,
   storageProvided: true,
+  storageItems: [
+    { type: 'External HDD', quantity: 2, size: 2, unit: 'TB' },
+    { type: 'Pen Drive', quantity: 3, size: 64, unit: 'GB' },
+  ],
   localVendorCost: 5000 + index,
   minimumCost: 4000,
   createdBy: 'admin',
@@ -80,6 +88,8 @@ describe('exportRequirementsToExcel', () => {
       tcName: `Centre ${index}`,
       clientName: 'Client',
       examName: 'Exam',
+      examDate: '2026-03-15',
+      scheduledCandidates: 400 + index,
       createdBy: 'admin',
       createdAt: '2026-01-01T00:00:00.000Z',
       updatedAt: '2026-01-01T00:00:00.000Z',
@@ -98,10 +108,13 @@ describe('exportRequirementsToExcel', () => {
       'Zone': 'North',
       'City': 'City 0',
       'TC Code': '1000',
+      'Date of Exam': '2026-03-15',
+      'Candidate Count': 400,
     });
     expect(rows[14]).toMatchObject({
       'City': 'City 14',
       'TC Code': '1014',
+      'Candidate Count': 414,
     });
   });
 
@@ -115,8 +128,31 @@ describe('exportRequirementsToExcel', () => {
       workbook.Sheets.Requirements,
       { header: 1 }
     );
-    expect(rows[0]).toEqual(['Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client Name', 'Exam Name']);
+    expect(rows[0]).toEqual([
+      'Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client Name', 'Exam Name',
+      'Date of Exam', 'Candidate Count',
+    ]);
     expect(rows).toHaveLength(1);
+  });
+
+  it('imports requirement exam date and candidate count fields', async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([[
+      'Zone', 'State', 'City', 'TC Code', 'TC Name', 'Client Name', 'Exam Name',
+      'Date of Exam', 'Candidate Count',
+    ], [
+      'North', 'Delhi', 'Delhi', '1001', 'Centre 1', 'Client', 'Exam', '2026-12-10', 240,
+    ]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Requirements');
+    const output = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const buffer = new ArrayBuffer(output.byteLength);
+    new Uint8Array(buffer).set(new Uint8Array(output));
+    const file = new File([buffer], 'requirements.xlsx');
+
+    await expect(parseRequirementFile(file)).resolves.toMatchObject([{
+      examDate: '2026-12-10',
+      scheduledCandidates: 240,
+    }]);
   });
 });
 
@@ -137,6 +173,70 @@ describe('filtered operational Excel exports', () => {
     expect(readHeaders(writeFile.mock.calls[1][0], 'Vendors')).toEqual(['Vendor ID', 'Zone', 'Vendor Name']);
   });
 
+  it('creates a requirement-prefilled installation template with zone-specific dropdowns', () => {
+    const requirement = {
+      ...makeRequirement(1),
+      examDate: '2026-12-10',
+      scheduledCandidates: 240,
+    };
+    const vendors = [
+      makeVendor(1),
+      { ...makeVendor(2), zone: 'South', vendorName: 'South Vendor' },
+    ];
+    const template = createInstallationTemplate([requirement], vendors);
+    const workbook = XLSX.read(template, { type: 'array' });
+    const row = readRows(workbook, 'Template')[0];
+
+    expect(row).toMatchObject({
+      'Client Name': 'Client',
+      'Exam Name': 'Exam',
+      'Zone': 'North',
+      'State': 'Delhi',
+      'City': 'City 1',
+      'TC Code': '1001',
+      'TC Name': 'Centre 1',
+      'Scheduled Candidates': 240,
+    });
+    expect(XLSX.SSF.format('yyyy-mm-dd', workbook.Sheets.Template.H2.v)).toBe('2026-12-10');
+    expect(workbook.Workbook?.Sheets?.[1].Hidden).toBe(1);
+    expect(workbook.Workbook?.Names?.some(name => name.Name === 'VendorZone_North_1')).toBe(true);
+    const listRows = XLSX.utils.sheet_to_json<unknown[]>(workbook.Sheets._Lists, { header: 1 });
+    expect(listRows.flat()).toContain('Vendor 1');
+    expect(listRows.flat()).not.toContain('South Vendor');
+    const worksheetXml = strFromU8(unzipSync(template)['xl/worksheets/sheet1.xml']);
+    expect(worksheetXml).toContain('<dataValidations');
+    expect(worksheetXml).toContain('<formula1>VendorZone_North_1</formula1>');
+    expect(worksheetXml).toContain('<formula1>StorageTypes</formula1>');
+    expect(worksheetXml).toContain('sqref="K2"');
+  });
+
+  it('parses multiple storage entries from bulk installation rows', async () => {
+    const worksheet = XLSX.utils.aoa_to_sheet([[
+      'Client Name', 'Exam Name', 'TC Code', 'Exam Date', 'Scheduled Candidates',
+      'Installation Type', 'Vendor Name', 'Camera Count', 'Storage 1 Type',
+      'Storage 1 Quantity', 'Storage 1 Size', 'Storage 1 Unit', 'Storage 2 Type',
+      'Storage 2 Quantity', 'Storage 2 Size', 'Storage 2 Unit', 'Local Vendor Cost',
+    ], [
+      'Client', 'Exam', '1001', '2026-12-10', 240, 'Full Vendor', 'Vendor 1', 4,
+      'External HDD', 2, 2, 'TB', 'Pen Drive', 3, 64, 'GB', 5000,
+    ]]);
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, 'Template');
+    const output = XLSX.write(workbook, { type: 'array', bookType: 'xlsx' });
+    const buffer = new ArrayBuffer(output.byteLength);
+    new Uint8Array(buffer).set(new Uint8Array(output));
+    const file = new File([buffer], 'bulk-template.xlsx');
+
+    await expect(parseBulkInstallationFile(file)).resolves.toMatchObject([{
+      scheduledCandidates: 240,
+      storageItems: [
+        { type: 'External HDD', quantity: 2, size: 2, unit: 'TB' },
+        { type: 'Pen Drive', quantity: 3, size: 64, unit: 'GB' },
+      ],
+      localVendorCost: 5000,
+    }]);
+  });
+
   it('exports every supplied record and keeps headers for an empty filter result', () => {
     const writeFile = vi.spyOn(XLSX, 'writeFile').mockImplementation(() => undefined);
     const installations = Array.from({ length: 15 }, (_, index) => makeInstallation(index));
@@ -146,6 +246,8 @@ describe('filtered operational Excel exports', () => {
     exportRecordsToExcel(installations, requirements, vendors, []);
     expect(readRows(writeFile.mock.calls[0][0], 'Records')).toHaveLength(15);
     expect(readRows(writeFile.mock.calls[0][0], 'Records')[14]['TC Code']).toBe('1014');
+    expect(readRows(writeFile.mock.calls[0][0], 'Records')[0]['External Storage Details'])
+      .toBe('External HDD: 2 x 2 TB; Pen Drive: 3 x 64 GB');
 
     exportRecordsToExcel([], requirements, vendors, []);
     expect(readHeaders(writeFile.mock.calls[1][0], 'Records')).toContain('TC Code');

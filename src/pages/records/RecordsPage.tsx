@@ -4,7 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/FormFields';
-import { exportRecordsToExcel } from '../../utils/excel';
+import { downloadInstallationTemplate, exportRecordsToExcel } from '../../utils/excel';
 import { printRecordsPDF } from '../../utils/pdf';
 import { getInstallationStats } from '../../utils/calculations';
 import { Download, Printer, Eye, Pencil } from 'lucide-react';
@@ -61,6 +61,33 @@ export default function RecordsPage() {
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
+  const templateRequirements = scopedRequirements.filter(requirement => {
+    if (filterClient && requirement.clientName !== filterClient) return false;
+    if (filterExam && requirement.examName !== filterExam) return false;
+    if (filterZone && requirement.zone !== filterZone) return false;
+    if (filterState && requirement.state !== filterState) return false;
+    if (filterCity && requirement.city !== filterCity) return false;
+    if (filterTcCode && requirement.tcCode.replace(/\D/g, '') !== filterTcCode) return false;
+    if (startDate || endDate) {
+      const requirementDates = [
+        requirement.examDate,
+        ...data.installations
+          .filter(installation => installation.requirementId === requirement.id)
+          .flatMap(installation => data.examDates
+            .filter(date => date.installationRecordId === installation.id)
+            .map(date => date.examDate)),
+      ].filter((date): date is string => Boolean(date))
+        .map(date => normalizeExamDate(date) || date);
+      if (requirementDates.length === 0) return false;
+      if (startDate && !requirementDates.some(date => date >= startDate)) return false;
+      if (endDate && !requirementDates.some(date => date <= endDate)) return false;
+    }
+    return true;
+  });
+  const templateVendors = data.vendors.filter(vendor =>
+    currentUser?.role !== 'zonal_user' ||
+    scopedRequirements.some(requirement => requirement.zone === vendor.zone)
+  );
 
   const handleViewQuotation = (quotationFileId: string) => {
     const q = data.quotations.find(q => q.id === quotationFileId);
@@ -94,6 +121,10 @@ export default function RecordsPage() {
           </Button>
           <Button variant="outline" size="sm" onClick={() => printRecordsPDF(filtered, scopedRequirements, data.vendors.filter(vendor => currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone), data.examDates, filterLabel)}>
             <Printer size={14} /> PDF
+          </Button>
+          <Button variant="outline" size="sm"
+            onClick={() => downloadInstallationTemplate(templateRequirements, templateVendors)}>
+            <Download size={14} /> Template ({templateRequirements.length})
           </Button>
           {can('create_installation') && (
             <Button size="sm" onClick={() => navigate('/installation/new')}>+ New Record</Button>

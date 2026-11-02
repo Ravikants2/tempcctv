@@ -6,7 +6,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Alert, Badge } from '../../components/ui/index';
-import { downloadTemplate, parseBulkInstallationFile, type BulkInstallationRow } from '../../utils/excel';
+import { downloadInstallationTemplate, parseBulkInstallationFile, type BulkInstallationRow } from '../../utils/excel';
 import type { InstallationRecord } from '../../types';
 import { Download, Upload } from 'lucide-react';
 import * as XLSX from 'xlsx';
@@ -26,6 +26,12 @@ export default function BulkUploadPage() {
   const [rows, setRows] = useState<ValidatedRow[] | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
   const [importing, setImporting] = useState(false);
+  const scopedRequirements = data.requirements.filter(requirement =>
+    currentUser?.role !== 'zonal_user' || requirement.zone === currentUser.zone
+  );
+  const scopedVendors = data.vendors.filter(vendor =>
+    currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone
+  );
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -34,18 +40,42 @@ export default function BulkUploadPage() {
       const parsed = await parseBulkInstallationFile(file);
       const validated: ValidatedRow[] = parsed.map(row => {
         const errors: string[] = [];
-        const req = data.requirements.find(r =>
+        const req = scopedRequirements.find(r =>
           r.clientName === row.clientName && r.examName === row.examName && r.tcCode === row.tcCode
         );
         if (!req) errors.push('Requirement not found');
         if (!normalizeExamDate(row.examDate)) errors.push('Invalid exam date');
         else row.examDate = normalizeExamDate(row.examDate)!;
-        if (row.scheduledCandidates < 0) errors.push('Negative candidates');
+        if (!row.scheduledCandidatesProvided || !Number.isInteger(row.scheduledCandidates) || row.scheduledCandidates < 0) {
+          errors.push('Candidate count must be filled with a non-negative whole number');
+        }
         if (!['Full Vendor', 'Partial Vendor'].includes(row.installationType)) errors.push('Invalid installation type');
         const vendor = req ? data.vendors.find(v => sameZone(v.zone, req.zone) && sameVendorName(v.vendorName, row.vendorName)) : undefined;
         if (req && !vendor) errors.push(`Vendor "${row.vendorName}" not approved for zone ${req.zone}`);
-        if (row.localVendorCost < 0) errors.push('Negative cost');
-        if (row.cameraCount < 0) errors.push('Negative camera count');
+        if (!row.localVendorCostProvided || !Number.isFinite(row.localVendorCost) || row.localVendorCost < 0) {
+          errors.push('Local vendor cost must be filled with a non-negative amount');
+        }
+        if (!Number.isFinite(row.cameraCount) || row.cameraCount < 0) errors.push('Camera count must be non-negative');
+        if (row.minimumCostProvided && (!Number.isFinite(row.minimumCost) || row.minimumCost < 0)) {
+          errors.push('Minimum cost must be a non-negative amount');
+        }
+        if (![row.proxyProvidedValue, row.internetProvidedValue].every(value =>
+          value === '' || ['yes', 'no'].includes(value.toLowerCase())
+        )) {
+          errors.push('Proxy and Internet values must be Yes or No');
+        }
+        if (row.storageProvidedValue && !['yes', 'no'].includes(row.storageProvidedValue.toLowerCase())) {
+          errors.push('Storage Provided must be Yes or No');
+        }
+        row.storageItems.forEach((item, index) => {
+          if (!['Pen Drive', 'External HDD'].includes(item.type)) errors.push(`Invalid storage ${index + 1} type`);
+          if (!Number.isInteger(item.quantity) || item.quantity < 1) errors.push(`Storage ${index + 1} quantity must be at least 1`);
+          if (!Number.isFinite(item.size) || item.size < 0) errors.push(`Storage ${index + 1} size must be non-negative`);
+          if (!['GB', 'TB'].includes(item.unit)) errors.push(`Invalid storage ${index + 1} unit`);
+        });
+        if (row.storageProvided && row.storageItems.length === 0) {
+          errors.push('Add at least one external storage entry or set Storage Provided to No');
+        }
 
         const existing = req ? data.installations.find(i => i.requirementId === req.id) : undefined;
         return {
@@ -95,10 +125,16 @@ export default function BulkUploadPage() {
           proxyProvided: firstRow.proxyProvided,
           internetProvided: firstRow.internetProvided,
           storageProvided: firstRow.storageProvided,
-          storageType: firstRow.storageProvided ? firstRow.storageType as InstallationRecord['storageType'] : undefined,
-          storageQuantity: firstRow.storageProvided ? firstRow.storageQuantity : undefined,
-          storageSize: firstRow.storageProvided ? firstRow.storageSize : undefined,
-          storageUnit: firstRow.storageProvided ? firstRow.storageUnit as InstallationRecord['storageUnit'] : undefined,
+          storageType: firstRow.storageItems[0]?.type as InstallationRecord['storageType'],
+          storageQuantity: firstRow.storageItems[0]?.quantity,
+          storageSize: firstRow.storageItems[0]?.size,
+          storageUnit: firstRow.storageItems[0]?.unit as InstallationRecord['storageUnit'],
+          storageItems: firstRow.storageItems.map(item => ({
+            type: item.type as NonNullable<InstallationRecord['storageType']>,
+            quantity: item.quantity,
+            size: item.size,
+            unit: item.unit as NonNullable<InstallationRecord['storageUnit']>,
+          })),
           localVendorCost: firstRow.localVendorCost,
           minimumCost: firstRow.minimumCost || undefined,
           remarks: firstRow.remarks || undefined,
@@ -165,7 +201,9 @@ export default function BulkUploadPage() {
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <h1 className="text-xl font-bold text-gray-900">Bulk Installation Upload</h1>
         <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={() => downloadTemplate('installation')}><Download size={14} /> Template</Button>
+          <Button variant="outline" size="sm" onClick={() => downloadInstallationTemplate(scopedRequirements, scopedVendors)}>
+            <Download size={14} /> Template ({scopedRequirements.length})
+          </Button>
           <Button variant="secondary" size="sm" onClick={() => fileInputRef.current?.click()}><Upload size={14} /> Upload File</Button>
           <input ref={fileInputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleFile} />
         </div>
