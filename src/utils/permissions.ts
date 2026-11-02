@@ -65,7 +65,6 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     id: 'other',
     label: 'Other workspace areas',
     options: [
-      { key: 'page:chat', label: 'AI Chat', description: 'Ask questions about accessible records' },
       { key: 'workspace:backup', label: 'Download backup', description: 'Download accessible workspace data; restore is Super Admin-only' },
     ],
   },
@@ -82,12 +81,12 @@ export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   user: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
     'page:dashboard.vendor', 'page:dashboard.venue', 'page:requirements',
-    'page:vendors', 'page:records', 'page:chat',
+    'page:vendors', 'page:records',
     'records:create', 'records:edit', 'workspace:backup',
   ],
   viewer: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
-    'page:dashboard.venue', 'page:vendors', 'page:chat',
+    'page:dashboard.venue', 'page:vendors',
   ],
   zonal_user: [
     'page:requirements', 'page:vendors', 'page:records',

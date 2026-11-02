@@ -6,9 +6,9 @@ import { PageExportActions } from './PageExportActions';
 import { clsx } from 'clsx';
 import {
   LayoutDashboard, FileText, Users, ClipboardList, TrendingUp,
-  Wrench, LogOut, Menu, X, ChevronDown, RefreshCw,
-  Download, Upload, Cloud, CloudOff, Loader2, CheckCircle2, AlertCircle,
-  MessageCircle, UserCog,
+  Wrench, LogOut, Menu, X, ChevronDown,
+  Download, Upload, Github, Loader2, CheckCircle2, AlertCircle,
+  UserCog,
 } from 'lucide-react';
 
 const navItems = [
@@ -21,12 +21,11 @@ const navItems = [
   { to: '/vendors',              label: 'Vendors',             icon: Users,           permission: 'page:vendors' },
   { to: '/records',              label: 'Records',             icon: ClipboardList,   permission: 'page:records' },
   { to: '/approvals',            label: 'Approvals',           icon: CheckCircle2,    permission: 'page:approvals' },
-  { to: '/chat',                 label: 'AI Chat',             icon: MessageCircle,   permission: 'page:chat' },
   { to: '/users',                label: 'User Management',     icon: UserCog,         permission: 'manage_users' },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {
-  const { currentUser, logout, data, syncStatus, syncError, isGitHub, reloadFromGitHub, updateData, can } = useAuth();
+  const { currentUser, logout, data, syncStatus, syncError, updateData, can } = useAuth();
   const navigate = useNavigate();
   const [mobileOpen, setMobileOpen]   = useState(false);
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -52,12 +51,11 @@ export function Layout({ children }: { children: React.ReactNode }) {
   };
 
   const SyncIcon = () => {
-    if (!isGitHub) return <span title="Secure Worker API not configured"><CloudOff size={14} className="text-white/40" /></span>;
     if (syncStatus === 'loading') return <Loader2 size={14} className="text-white/70 animate-spin" />;
     if (syncStatus === 'saving')  return <Loader2 size={14} className="text-yellow-300 animate-spin" />;
     if (syncStatus === 'saved')   return <CheckCircle2 size={14} className="text-green-300" />;
     if (syncStatus === 'error')   return <span title={syncError}><AlertCircle size={14} className="text-red-300" /></span>;
-    return <span title="Synced with GitHub"><Cloud size={14} className="text-white/60" /></span>;
+    return <span title="Saved to the private GitHub repository"><Github size={14} className="text-white/60" /></span>;
   };
 
   return (
@@ -84,12 +82,6 @@ export function Layout({ children }: { children: React.ReactNode }) {
           {/* Right: sync + user menu */}
           <div className="flex items-center gap-2 shrink-0">
             <SyncIcon />
-            {isGitHub && (
-              <button onClick={reloadFromGitHub} title="Reload from GitHub"
-                className="p-1 rounded text-white/60 hover:text-white focus:outline-none focus:ring-2 focus:ring-white">
-                <RefreshCw size={13} />
-              </button>
-            )}
 
             {/* User dropdown */}
             <div className="relative">
@@ -166,16 +158,19 @@ export function Layout({ children }: { children: React.ReactNode }) {
           </nav>
         )}
 
-        {/* Sync error banner */}
+        {/* Local demo storage error banner */}
         {syncStatus === 'error' && (
           <div className="bg-red-600 text-white text-xs px-4 py-1 flex items-center gap-2">
             <AlertCircle size={12} />
-            Secure sync error: {syncError} — the server may not have saved this change.
+            GitHub save error: {syncError} — the private repository may not have saved this change.
           </div>
         )}
       </header>
 
       <main className="flex-1 max-w-screen-2xl mx-auto w-full px-4 py-7 sm:px-6 lg:px-8">
+        <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
+          GitHub-backed demo: data is stored in a private repository. Every repository collaborator can access all records; app roles are not a security boundary.
+        </div>
         <PageExportActions />
         {children}
       </main>

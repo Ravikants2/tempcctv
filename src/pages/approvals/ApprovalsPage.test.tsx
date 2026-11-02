@@ -74,7 +74,6 @@ describe('ApprovalsPage', () => {
       data,
       syncStatus: 'idle',
       syncError: '',
-      isGitHub: false,
       login: async () => false,
       logout: async () => undefined,
       createUserAccount: async user => user,
@@ -82,7 +81,6 @@ describe('ApprovalsPage', () => {
       updateData,
       addAuditLog: vi.fn(),
       can: (action: string) => action === 'view_approvals' || action === 'approve_surveillance',
-      reloadFromGitHub: async () => undefined,
     });
   }
 

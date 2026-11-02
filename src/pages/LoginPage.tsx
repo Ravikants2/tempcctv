@@ -1,31 +1,35 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { Input } from '../components/ui/FormFields';
 import { Button } from '../components/ui/Button';
 import { Alert } from '../components/ui/index';
-import { Activity, ArrowRight, Camera, Cloud, CloudOff, ShieldCheck } from 'lucide-react';
+import { Activity, ArrowRight, Camera, ShieldAlert } from 'lucide-react';
 
 export default function LoginPage() {
-  const { login, isGitHub } = useAuth();
+  const { login } = useAuth();
   const navigate = useNavigate();
-  const [email, setEmail]       = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError]       = useState('');
-  const [loading, setLoading]   = useState(false);
+  const [githubToken, setGithubToken] = useState('');
+  const [name, setName] = useState('');
+  const [recoverAdmin, setRecoverAdmin] = useState(false);
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
 
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
+  const signIn = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError('');
     setLoading(true);
-    void login(email, password).then(ok => {
+    try {
+      const signedIn = await login(email, password, githubToken, name, recoverAdmin);
+      if (signedIn) navigate('/dashboard/executive');
+      else setError('Invalid user ID or password.');
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Unable to sign in.');
+    } finally {
       setLoading(false);
-      if (ok) navigate('/dashboard/executive');
-      else setError('Invalid email or password.');
-    }).catch(error => {
-      setLoading(false);
-      setError((error as Error).message);
-    });
+    }
   };
 
   return (
@@ -37,7 +41,7 @@ export default function LoginPage() {
       </div>
 
       <div className="relative mx-auto grid min-h-screen max-w-7xl items-center gap-12 px-4 py-8 sm:px-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-16 lg:px-12">
-        <section className="hidden min-h-[650px] flex-col justify-between py-8 lg:flex">
+        <section className="hidden min-h-[560px] flex-col justify-between py-8 lg:flex">
           <div className="flex items-center gap-3">
             <span className="grid h-12 w-12 place-items-center rounded-2xl border border-white/10 bg-white/[0.08] text-sky-300 shadow-xl shadow-blue-950/30">
               <Camera size={23} />
@@ -57,25 +61,11 @@ export default function LoginPage() {
               <span className="block bg-gradient-to-r from-sky-300 to-blue-400 bg-clip-text text-transparent">One clear view.</span>
             </h1>
             <p className="mt-5 max-w-lg text-base leading-7 text-slate-400">
-              Coordinate venue requirements, installations, exam schedules and approvals in one secure workspace.
+              Sign in to the workspace backed by the private GitHub data repository.
             </p>
-
-            <div className="mt-10 grid max-w-lg grid-cols-2 gap-3">
-              {[
-                ['01', 'TC-centred records'],
-                ['02', 'Exam and shift visibility'],
-                ['03', 'Review and approvals'],
-                ['04', 'Audited user activity'],
-              ].map(([number, label]) => (
-                <div key={number} className="flex items-center gap-3 rounded-xl border border-white/[0.08] bg-white/[0.035] px-3 py-3">
-                  <span className="font-mono text-[10px] text-sky-300/80">{number}</span>
-                  <span className="text-xs font-medium text-slate-300">{label}</span>
-                </div>
-              ))}
-            </div>
           </div>
 
-          <p className="text-xs text-slate-500">Secure access for authorized examination operations teams.</p>
+          <p className="text-xs text-amber-300">Repository collaborators can access all data. Do not store confidential information.</p>
         </section>
 
         <section className="mx-auto w-full max-w-md">
@@ -91,41 +81,57 @@ export default function LoginPage() {
 
           <div className="rounded-3xl border border-white/10 bg-white p-6 text-slate-900 shadow-2xl shadow-black/30 sm:p-9">
             <div className="mb-7">
-              <span className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-blue-50 text-blue-700">
-                <ShieldCheck size={22} />
+              <span className="mb-5 grid h-11 w-11 place-items-center rounded-xl bg-amber-50 text-amber-700">
+                <ShieldAlert size={22} />
               </span>
-              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Secure sign in</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">GitHub-backed sign in</p>
               <h2 className="mt-2 text-2xl font-semibold tracking-tight text-slate-950">Welcome back</h2>
-              <p className="mt-1.5 text-sm text-slate-500">Sign in to continue to your venue workspace.</p>
+              <p className="mt-1.5 text-sm text-slate-500">Use your app account and a GitHub token for the private data repo.</p>
             </div>
 
-            <div className={`mb-6 flex items-start gap-2.5 rounded-xl border px-3.5 py-3 text-xs leading-5 ${
-              isGitHub
-                ? 'border-emerald-100 bg-emerald-50 text-emerald-800'
-                : 'border-amber-200 bg-amber-50 text-amber-800'
-            }`}>
-              {isGitHub ? <Cloud size={15} className="mt-0.5 shrink-0" /> : <CloudOff size={15} className="mt-0.5 shrink-0" />}
-              <span>{isGitHub ? 'Secure cloud service configured' : 'Secure cloud service is not configured'}</span>
+            <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 px-3.5 py-3 text-xs leading-5 text-amber-900">
+              Anyone with write access to the private repository can read or change all app data, including account password hashes. App roles only control the interface; they are not a security boundary. A repository token is kept in this browser tab's session storage and is never saved in the public app repository.
             </div>
 
             {error && <div className="mb-5"><Alert type="error" onClose={() => setError('')}>{error}</Alert></div>}
 
-            <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-              <Input label="Email address" type="email" value={email}
-                onChange={e => setEmail(e.target.value)} required autoComplete="username" placeholder="you@company.com" />
+            <form onSubmit={signIn} className="flex flex-col gap-4">
+              <Input label="User ID (email)" type="email" value={email}
+                onChange={event => setEmail(event.target.value)} required autoComplete="username" />
               <Input label="Password" type="password" value={password}
-                onChange={e => setPassword(e.target.value)} required autoComplete="current-password" placeholder="Enter your password" />
-              <Button type="submit" disabled={loading || !isGitHub} size="lg"
-                className="mt-2 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 py-3 font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
-                {loading ? 'Signing in…' : <>Sign in to workspace <ArrowRight size={16} /></>}
+                onChange={event => setPassword(event.target.value)} required autoComplete="current-password" />
+              <Input label="GitHub fine-grained token" type="password" value={githubToken}
+                onChange={event => setGithubToken(event.target.value)} required autoComplete="off"
+                placeholder="github_pat_…" />
+              <details className="rounded-lg border border-slate-200 px-3 py-2 text-xs text-slate-600">
+                <summary className="cursor-pointer font-medium text-slate-700">First Super Admin setup</summary>
+                <p className="mt-2 leading-5">
+                  If there is no Super Admin with a saved password, the first repository user can create one with a password of at least 12 characters. Existing accounts and IDs are kept.
+                </p>
+                <div className="mt-3">
+                  <Input label="Admin display name (first setup only)" value={name}
+                    onChange={event => setName(event.target.value)} autoComplete="name" />
+                </div>
+                <label className="mt-3 flex items-start gap-2 leading-5">
+                  <input type="checkbox" checked={recoverAdmin}
+                    onChange={event => setRecoverAdmin(event.target.checked)}
+                    className="mt-1 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+                  <span>
+                    Recover Super Admin: create or reset the Super Admin for this email using this password. Use only if you administer the private repository; this cannot restrict other repository collaborators.
+                  </span>
+                </label>
+              </details>
+              <p className="text-xs leading-5 text-slate-500">
+                Each user needs a GitHub fine-grained token scoped to <strong>Contents: Read and write</strong> on the private data repository.
+              </p>
+              <Button type="submit" disabled={loading} size="lg"
+                className="mt-1 flex w-full items-center justify-center gap-2 rounded-xl bg-blue-700 py-3 font-semibold text-white shadow-lg shadow-blue-900/15 transition hover:bg-blue-800 disabled:cursor-not-allowed disabled:opacity-60">
+                {loading ? 'Signing in…' : <>Sign in <ArrowRight size={16} /></>}
               </Button>
             </form>
 
-            {!isGitHub && <p className="mt-4 text-xs leading-5 text-amber-800">
-              Ask your administrator to configure the secure Worker API before signing in.
-            </p>}
             <p className="mt-7 border-t border-slate-100 pt-5 text-center text-[11px] text-slate-400">
-              Access is limited to authorized users.
+              Never reuse a GitHub token in shared or untrusted browsers. Revoke a token immediately if exposed.
             </p>
           </div>
         </section>

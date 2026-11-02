@@ -175,7 +175,7 @@ function PermissionEditor({
 
 export default function UserManagementPage() {
   const {
-    data, updateData, addAuditLog, can, currentUser, createUserAccount, changeUserPassword, reloadFromGitHub,
+    data, updateData, addAuditLog, can, currentUser, createUserAccount, changeUserPassword,
   } = useAuth();
   const [modal, setModal] = useState<'create' | 'password' | 'role' | null>(null);
   const [selectedUser, setSelectedUser] = useState<User | null>(null);
@@ -244,16 +244,17 @@ export default function UserManagementPage() {
       groupIds: form.groupIds,
     };
     try {
-      await createUserAccount(user, form.password);
-      await reloadFromGitHub();
+      const createdUser = await createUserAccount(user, form.password);
+      updateData(previous => ({ ...previous, users: [...previous.users, createdUser] }));
+      addAuditLog('CREATE', 'User', createdUser.id, undefined, createdUser);
       closeModal();
-      setAlert({ type: 'success', message: 'User created.' });
+      setAlert({ type: 'success', message: 'User created. Share the user ID and temporary password securely.' });
     } catch (error) {
       setAlert({ type: 'error', message: (error as Error).message });
     }
   };
 
-  const changePassword = async (event: React.FormEvent<HTMLFormElement>) => {
+  const resetPassword = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     if (!selectedUser || newPassword.length < 12) {
       setAlert({ type: 'error', message: 'Password must contain at least 12 characters.' });
@@ -261,7 +262,8 @@ export default function UserManagementPage() {
     }
     try {
       await changeUserPassword(selectedUser.id, newPassword);
-      await reloadFromGitHub();
+      updateData(previous => ({ ...previous, users: [...previous.users] }));
+      addAuditLog('UPDATE', 'UserPassword', selectedUser.id, undefined, { password: '[changed]' });
       closeModal();
       setAlert({ type: 'success', message: `Password updated for ${selectedUser.name}.` });
     } catch (error) {
@@ -424,11 +426,15 @@ export default function UserManagementPage() {
         <div>
           <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Access control</p>
           <h1 className="text-2xl font-bold tracking-tight text-slate-900">User Management</h1>
-          <p className="mt-1 text-sm text-slate-500">Create accounts, manage roles, change passwords, and remove access.</p>
+          <p className="mt-1 text-sm text-slate-500">Manage app user IDs and roles stored in the private GitHub database.</p>
         </div>
         {accessTab === 'users' && <Button onClick={() => { setAlert(null); setModal('create'); }}><Plus size={14} /> Create User</Button>}
         {accessTab === 'roles' && <Button onClick={startNewRole}><Plus size={14} /> Create Role</Button>}
         {accessTab === 'groups' && <Button onClick={startNewGroup}><Plus size={14} /> Create Group</Button>}
+      </div>
+
+      <div className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-xs leading-5 text-amber-900" role="note">
+        App roles only control this interface. Anyone with a GitHub token that can write to the private repository can read and change all records and account hashes.
       </div>
 
       {alert && <div className="mb-4"><Alert type={alert.type} onClose={() => setAlert(null)}>{alert.message}</Alert></div>}
@@ -484,8 +490,12 @@ export default function UserManagementPage() {
                       }}>
                       Change role
                     </Button>
-                    <Button variant="outline" size="sm" onClick={() => { setAlert(null); setSelectedUser(user); setModal('password'); }}>
-                      <KeyRound size={13} /> Change password
+                    <Button variant="outline" size="sm" onClick={() => {
+                      setAlert(null);
+                      setSelectedUser(user);
+                      setModal('password');
+                    }}>
+                      <KeyRound size={13} /> Password
                     </Button>
                     <Button variant="danger" size="sm" disabled={user.id === currentUser?.id}
                       onClick={() => setDeleteUser(user)} aria-label={`Delete ${user.name}`}>
@@ -598,6 +608,8 @@ export default function UserManagementPage() {
         <form onSubmit={createUser} className="flex flex-col gap-3">
           <Input label="Full name" value={form.name} onChange={event => setForm(previous => ({ ...previous, name: event.target.value }))} required />
           <Input label="Email" type="email" value={form.email} onChange={event => setForm(previous => ({ ...previous, email: event.target.value }))} required />
+          <Input label="Temporary password" type="password" minLength={12} value={form.password}
+            onChange={event => setForm(previous => ({ ...previous, password: event.target.value }))} required />
           <Select label="Role" value={form.role} options={roleOptions}
             onChange={event => setForm(previous => ({ ...previous, role: event.target.value as Role }))} />
           {form.role === 'custom' && (
@@ -630,8 +642,6 @@ export default function UserManagementPage() {
               </div>
             </fieldset>
           )}
-          <Input label="Temporary password" type="password" minLength={12} value={form.password}
-            onChange={event => setForm(previous => ({ ...previous, password: event.target.value }))} required />
           <div className="flex justify-end gap-2 pt-2">
             <Button type="button" variant="secondary" onClick={closeModal}>Cancel</Button>
             <Button type="submit">Create User</Button>
@@ -640,7 +650,7 @@ export default function UserManagementPage() {
       </Modal>
 
       <Modal open={modal === 'password'} onClose={closeModal} title={`Change password${selectedUser ? ` — ${selectedUser.name}` : ''}`}>
-        <form onSubmit={changePassword} className="flex flex-col gap-3">
+        <form onSubmit={resetPassword} className="flex flex-col gap-3">
           <Input label="New password" type="password" minLength={12} value={newPassword}
             onChange={event => setNewPassword(event.target.value)} required />
           <div className="flex justify-end gap-2 pt-2">

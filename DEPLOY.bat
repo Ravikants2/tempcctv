@@ -33,13 +33,14 @@ IF %ERRORLEVEL% NEQ 0 (
 
 echo.
 echo ============================================================
-echo  DONE! Configure the new repository before the app can sign in:
+echo  DONE! No Cloudflare or API secrets are needed for this demo.
 echo.
-echo  Settings: https://github.com/Ravikants2/tempcctv/settings/secrets/actions
+echo  Pages: https://github.com/Ravikants2/tempcctv/settings/pages
 echo.
 echo  Actions: https://github.com/Ravikants2/tempcctv/actions
 echo.
 echo  App URL: https://ravikants2.github.io/tempcctv/
 echo  Original ion-cctv-app repository is not modified.
+echo  Users need private-repository access and their own fine-grained GitHub token.
 echo ============================================================
 pause

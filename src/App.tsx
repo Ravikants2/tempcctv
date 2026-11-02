@@ -15,7 +15,6 @@ import FinancialDashboard from './pages/dashboard/FinancialDashboard';
 import OperationsDashboard from './pages/dashboard/OperationsDashboard';
 import VendorDashboard from './pages/dashboard/VendorDashboard';
 import VenueDashboard from './pages/dashboard/VenueDashboard';
-import ChatPage from './pages/chat/ChatPage';
 import UserManagementPage from './pages/users/UserManagementPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 
@@ -30,7 +29,7 @@ function WorkspaceLoading() {
         <p className="text-xs font-semibold uppercase tracking-[0.22em] text-sky-300">iON CCTV workspace</p>
         <h1 className="mt-3 text-xl font-semibold tracking-tight">Preparing your workspace</h1>
         <p className="mt-2 text-sm leading-6 text-slate-400">
-          Verifying your secure session and loading the latest venue records.
+          Restoring your demo session and loading data saved in this browser.
         </p>
         <div className="mt-8 h-1 w-40 overflow-hidden rounded-full bg-white/10">
           <div className="h-full w-1/2 animate-pulse rounded-full bg-gradient-to-r from-sky-400 to-blue-500" />
@@ -101,7 +100,6 @@ function AppRoutes() {
       <Route path="/vendors"              element={<ProtectedRoute viewerAllowed zonalAllowed permission="page:vendors"><VendorsPage /></ProtectedRoute>} />
       <Route path="/records"              element={<ProtectedRoute zonalAllowed permission="page:records"><RecordsPage /></ProtectedRoute>} />
       <Route path="/approvals"            element={<ProtectedRoute approvalAllowed permission="page:approvals"><ApprovalsPage /></ProtectedRoute>} />
-      <Route path="/chat"                 element={<ProtectedRoute viewerAllowed permission="page:chat"><ChatPage /></ProtectedRoute>} />
       <Route path="/users"                element={<ProtectedRoute permission="manage_users"><UserManagementPage /></ProtectedRoute>} />
       <Route path="/installation/new"     element={<ProtectedRoute zonalAllowed permission="records:create"><InstallationFormPage /></ProtectedRoute>} />
       <Route path="/installation/edit/:id" element={<ProtectedRoute zonalAllowed permission="records:edit"><InstallationFormPage /></ProtectedRoute>} />
