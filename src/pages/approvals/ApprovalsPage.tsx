@@ -660,6 +660,11 @@ export default function ApprovalsPage() {
                       {recordPreviousRevision && (
                         <p className="mt-1 text-[10px] leading-snug text-slate-500">Previous {money(recordPreviousRevision.localVendorCost)}</p>
                       )}
+                      {record.remarks && (
+                        <p className="mt-1 break-words text-[10px] leading-snug text-amber-900">
+                          Quote remarks: {record.remarks}
+                        </p>
+                      )}
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Per candidate</p>

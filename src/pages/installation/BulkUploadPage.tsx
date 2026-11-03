@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { SortableTable } from '../../components/ui/SortableTable';
+import { useNavigate } from 'react-router-dom';
 import { formatExamDate, normalizeExamDate } from '../../utils/dates';
 import { sameVendorName, sameZone } from '../../utils/vendorCode';
 import { v4 as uuidv4 } from 'uuid';
@@ -8,8 +9,10 @@ import { Button } from '../../components/ui/Button';
 import { Alert, Badge } from '../../components/ui/index';
 import { downloadInstallationTemplate, parseBulkInstallationFile, type BulkInstallationRow } from '../../utils/excel';
 import type { InstallationRecord } from '../../types';
-import { Download, Upload } from 'lucide-react';
+import { Download, Upload, ArrowLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
+import { getVenueCostHistory, type VenueCostHistoryEntry } from '../../utils/venueCosts';
+import { STORAGE_SIZE_OPTIONS } from '../../utils/storageOptions';
 
 type RowStatus = 'NEW' | 'UPDATE' | 'ERROR';
 
@@ -18,10 +21,12 @@ interface ValidatedRow extends BulkInstallationRow {
   errors: string[];
   requirementId?: string;
   resolvedVendorId?: string;
+  previousCost?: VenueCostHistoryEntry;
 }
 
 export default function BulkUploadPage() {
   const { data, updateData, addAuditLog, currentUser } = useAuth();
+  const navigate = useNavigate();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [rows, setRows] = useState<ValidatedRow[] | null>(null);
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; msg: string } | null>(null);
@@ -80,14 +85,25 @@ export default function BulkUploadPage() {
         }
         row.storageItems.forEach((item, index) => {
           if (!['Pen Drive', 'External HDD'].includes(item.type)) errors.push(`Invalid storage ${index + 1} type`);
-          if (!Number.isInteger(item.quantity) || item.quantity < 1) errors.push(`Storage ${index + 1} quantity must be at least 1`);
-          if (!Number.isFinite(item.size) || item.size < 0) errors.push(`Storage ${index + 1} size must be non-negative`);
-          if (!['GB', 'TB'].includes(item.unit)) errors.push(`Invalid storage ${index + 1} unit`);
+          if (!Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10) {
+            errors.push(`Storage ${index + 1} quantity must be between 1 and 10`);
+          }
+          if (!STORAGE_SIZE_OPTIONS.some(option => option.size === item.size && option.unit === item.unit)) {
+            errors.push(`Storage ${index + 1} size must be from 32 GB to 8 TB`);
+          }
         });
+        if (row.storageItems.length > 2) errors.push('No more than two storage entries are allowed');
         if (row.storageProvided && row.storageItems.length === 0) {
           errors.push('Add at least one external storage entry or set Storage Provided to No');
         }
 
+        const previousCost = req
+          ? getVenueCostHistory(req, data.installations, scopedRequirements, data.vendors, data.examDates)[0]
+          : undefined;
+        if (previousCost && row.localVendorCost > previousCost.record.localVendorCost &&
+          row.remarks.trim().length < 10) {
+          errors.push('Quote exceeds the previous total cost; enter a reason of at least 10 characters in Remarks');
+        }
         const existing = req ? data.installations.find(i => i.requirementId === req.id) : undefined;
         return {
           ...row,
@@ -95,6 +111,7 @@ export default function BulkUploadPage() {
           errors,
           requirementId: req?.id,
           resolvedVendorId: vendor?.id,
+          previousCost,
         };
       });
       setRows(validated);
@@ -148,7 +165,7 @@ export default function BulkUploadPage() {
           })),
           localVendorCost: firstRow.localVendorCost,
           minimumCost: firstRow.minimumCost || undefined,
-          remarks: firstRow.remarks || undefined,
+          remarks: [...new Set(groupRows.map(row => row.remarks.trim()).filter(Boolean))].join('; ') || undefined,
           createdBy: existing?.createdBy || currentUser!.id,
           createdAt: existing?.createdAt || now,
           updatedBy: currentUser!.id,
@@ -210,7 +227,12 @@ export default function BulkUploadPage() {
   return (
     <div>
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
-        <h1 className="text-xl font-bold text-gray-900">Bulk Installation Upload</h1>
+        <div className="flex items-center gap-3">
+          <Button variant="outline" size="sm" onClick={() => navigate('/records')}>
+            <ArrowLeft size={14} /> Back
+          </Button>
+          <h1 className="text-xl font-bold text-gray-900">Bulk Installation Upload</h1>
+        </div>
         <div className="flex gap-2">
           <Button variant="outline" size="sm"
             onClick={() => downloadInstallationTemplate(scopedRequirements, scopedVendors, templateExamDates)}>
@@ -220,6 +242,9 @@ export default function BulkUploadPage() {
           <input ref={fileInputRef} type="file" accept=".xlsx,.csv" className="hidden" onChange={handleFile} />
         </div>
       </div>
+      <p className="mb-4 text-xs text-slate-500">
+        TC codes and exam schedules must match Requirements. If a quote exceeds the previous total cost for its TC code or venue, enter a clear reason of at least 10 characters in Remarks; approvers will see it.
+      </p>
 
       {alert && <div className="mb-4"><Alert type={alert.type} onClose={() => setAlert(null)}>{alert.msg}</Alert></div>}
 
@@ -235,7 +260,7 @@ export default function BulkUploadPage() {
           <div className="overflow-x-auto max-h-96 mb-4">
             <SortableTable className="w-full text-xs">
               <thead><tr className="bg-gray-50 sticky top-0">
-                {['Row','Status','Client','Exam','TC Code','Date','Candidates','Vendor','Cost','Errors'].map(h => (
+                {['Row','Status','Client','Exam','TC Code','Date','Candidates','Vendor','Cost','Previous quote details','Errors'].map(h => (
                   <th key={h} className="px-2 py-2 text-left font-semibold text-gray-600">{h}</th>
                 ))}
               </tr></thead>
@@ -251,6 +276,15 @@ export default function BulkUploadPage() {
                     <td className="px-2 py-1">{r.scheduledCandidates}</td>
                     <td className="px-2 py-1">{r.vendorName}</td>
                     <td className="px-2 py-1">₹{r.localVendorCost}</td>
+                    <td className="px-2 py-1">
+                      {r.previousCost ? (
+                        <div>
+                          <p className="font-medium">₹{r.previousCost.record.localVendorCost.toLocaleString('en-IN')} · {r.previousCost.requirement.clientName} · {r.previousCost.requirement.examName}</p>
+                          <p>TC {r.previousCost.requirement.tcCode} - {r.previousCost.requirement.tcName} · {r.previousCost.requirement.zone}, {r.previousCost.requirement.state}, {r.previousCost.requirement.city}</p>
+                          <p>{r.previousCost.examDates.length ? r.previousCost.examDates.map(formatExamDate).join(', ') : 'Dates unavailable'} · {r.previousCost.totalCandidates.toLocaleString('en-IN')} candidates · Per candidate: {r.previousCost.totalCandidates > 0 ? `₹${(r.previousCost.record.localVendorCost / r.previousCost.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · {r.previousCost.vendorName}</p>
+                        </div>
+                      ) : 'No previous quote'}
+                    </td>
                     <td className="px-2 py-1 text-red-600">{r.errors.join('; ')}</td>
                   </tr>
                 ))}

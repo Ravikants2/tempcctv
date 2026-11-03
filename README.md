@@ -48,7 +48,8 @@ npm run dev
 
 - Executive, financial, operations, vendor, and venue dashboards
 - Requirements and vendor management, including CSV/XLSX imports
-- Installation records, exam schedules, quotations, and approval flows
+- Installation records with searchable TC-code selection, requirement-sourced exam schedules, quote history, and approval flows
+- Bulk installation templates with duplicate schedule cleanup and two storage slots with quantity and market-size dropdowns
 - App user accounts, passwords, roles, and groups stored in the private data repo
 - Excel/PDF export and JSON backup/restore
 - Authenticated API access through the Cloudflare Worker

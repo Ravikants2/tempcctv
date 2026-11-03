@@ -91,6 +91,7 @@ export function getRequirementExamDetails(
   });
 
   return requirements.flatMap(requirement => {
+    if (requirement.examDate) return [requirement];
     const recordDates = datesByRequirement.get(requirement.id);
     if (!recordDates?.length) return [requirement];
 
@@ -121,6 +122,7 @@ export interface RequirementExamGroup {
 
 export function groupRequirementExamDetails(requirements: RequirementMaster[]): RequirementExamGroup[] {
   const groups = new Map<string, RequirementExamGroup>();
+  const candidateCountsByGroup = new Map<string, Map<string, Set<number>>>();
   requirements.forEach(requirement => {
     const key = [
       requirement.clientName,
@@ -137,15 +139,21 @@ export function groupRequirementExamDetails(requirements: RequirementMaster[]): 
 
     if (requirement.examDate) {
       const examDate = normalizeExamDate(requirement.examDate) || requirement.examDate;
+      const candidateCount = requirement.scheduledCandidates || 0;
+      const countsByDate = candidateCountsByGroup.get(key) || new Map<string, Set<number>>();
+      const seenCounts = countsByDate.get(examDate) || new Set<number>();
       const existingDate = group.examDates.find(item => item.examDate === examDate);
       if (existingDate) {
-        existingDate.scheduledCandidates += requirement.scheduledCandidates || 0;
+        if (!seenCounts.has(candidateCount)) existingDate.scheduledCandidates += candidateCount;
       } else {
         group.examDates.push({
           examDate,
-          scheduledCandidates: requirement.scheduledCandidates || 0,
+          scheduledCandidates: candidateCount,
         });
       }
+      seenCounts.add(candidateCount);
+      countsByDate.set(examDate, seenCounts);
+      candidateCountsByGroup.set(key, countsByDate);
     }
     groups.set(key, group);
   });
@@ -154,6 +162,36 @@ export function groupRequirementExamDetails(requirements: RequirementMaster[]): 
     ...group,
     examDates: group.examDates.sort((left, right) => left.examDate.localeCompare(right.examDate)),
   }));
+}
+
+export function getRequirementExamSchedule(
+  requirementId: string,
+  requirements: RequirementMaster[],
+  installations: InstallationRecord[],
+  examDates: ExamDateDetail[]
+): RequirementExamGroup['examDates'] {
+  const requirement = requirements.find(item => item.id === requirementId);
+  if (!requirement) return [];
+  const sameRequirement = (candidate: RequirementMaster) =>
+    candidate.clientName.trim().toLocaleLowerCase() === requirement.clientName.trim().toLocaleLowerCase() &&
+    candidate.examName.trim().toLocaleLowerCase() === requirement.examName.trim().toLocaleLowerCase() &&
+    candidate.tcCode.trim().toLocaleLowerCase() === requirement.tcCode.trim().toLocaleLowerCase();
+  const relatedRequirements = requirements.filter(sameRequirement);
+  const requirementGroup = groupRequirementExamDetails(relatedRequirements)[0];
+  if (requirementGroup?.examDates.length) return requirementGroup.examDates;
+
+  const requirementIds = new Set(relatedRequirements.map(item => item.id));
+  const recordIds = new Set(installations
+    .filter(installation => requirementIds.has(installation.requirementId))
+    .map(installation => installation.id));
+  const candidatesByDate = new Map<string, number>();
+  examDates.filter(date => recordIds.has(date.installationRecordId)).forEach(date => {
+    const examDate = normalizeExamDate(date.examDate) || date.examDate;
+    candidatesByDate.set(examDate, (candidatesByDate.get(examDate) || 0) + date.scheduledCandidates);
+  });
+  return [...candidatesByDate.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([examDate, scheduledCandidates]) => ({ examDate, scheduledCandidates }));
 }
 
 export function applyDashboardFilters(

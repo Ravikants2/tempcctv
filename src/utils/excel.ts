@@ -12,8 +12,10 @@ import type {
 } from '../types';
 import { normalizeExamDate } from './dates';
 import { getVendorCode, sameZone } from './vendorCode';
+import { STORAGE_SIZE_OPTIONS, STORAGE_QUANTITIES } from './storageOptions';
 
-const STORAGE_TEMPLATE_SLOTS = 5;
+const STORAGE_TEMPLATE_SLOTS = 2;
+const LEGACY_STORAGE_SLOT_LIMIT = 5;
 const EXCEL_DATE_EPOCH = Date.UTC(1899, 11, 30);
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
@@ -21,7 +23,6 @@ const storageSlotHeaders = (slot: number) => [
   `Storage ${slot} Type`,
   `Storage ${slot} Quantity`,
   `Storage ${slot} Size`,
-  `Storage ${slot} Unit`,
 ];
 
 const bulkInstallationHeaders = [
@@ -78,7 +79,8 @@ export function createInstallationTemplate(
     ['Installation Type', 'Full Vendor', 'Partial Vendor'],
     ['Yes or No', 'Yes', 'No'],
     ['Storage Type', 'Pen Drive', 'External HDD'],
-    ['Storage Unit', 'GB', 'TB'],
+    ['Storage Quantity', ...STORAGE_QUANTITIES.map(String)],
+    ['Storage Size', ...STORAGE_SIZE_OPTIONS.map(option => option.label)],
   ];
   const vendorRangeNames = new Map<string, string>();
   zones.forEach((zone, index) => {
@@ -89,16 +91,46 @@ export function createInstallationTemplate(
   const listRows = Array.from({ length: Math.max(...listColumns.map(column => column.length)) }, (_, row) =>
     listColumns.map(column => column[row] || '')
   );
-  const templateRows = requirements.flatMap(requirement => {
-    const recordsDates = existingDates
-      .filter(date => date.requirementId === requirement.id)
-      .sort((left, right) => left.examDate.localeCompare(right.examDate));
-    const dates = recordsDates.length > 0
-      ? recordsDates
-      : [{
-          examDate: requirement.examDate || '',
-          scheduledCandidates: requirement.scheduledCandidates ?? '',
-        }];
+  const groupedRequirements = new Map<string, RequirementMaster[]>();
+  requirements.forEach(requirement => {
+    const key = [requirement.clientName, requirement.examName, requirement.tcCode]
+      .map(value => value.trim().toLocaleLowerCase()).join('\u0000');
+    const group = groupedRequirements.get(key) || [];
+    group.push(requirement);
+    groupedRequirements.set(key, group);
+  });
+  const requirementGroups = [...groupedRequirements.values()];
+  const getRequirementDates = (group: RequirementMaster[]) => {
+    const requirementIds = new Set(group.map(requirement => requirement.id));
+    const recordsDates = existingDates.filter(date => requirementIds.has(date.requirementId));
+    const requirementDates = group
+      .filter(requirement => requirement.examDate || requirement.scheduledCandidates !== undefined)
+      .map(requirement => ({
+        examDate: requirement.examDate || '',
+        scheduledCandidates: requirement.scheduledCandidates ?? '',
+      }));
+    const sourceDates = recordsDates.length ? recordsDates : requirementDates;
+    if (sourceDates.length === 0) return [{ examDate: '', scheduledCandidates: '' as number | string }];
+
+    const candidatesByDate = new Map<string, Set<number>>();
+    sourceDates.forEach(date => {
+      const examDate = normalizeExamDate(date.examDate) || date.examDate;
+      const candidates = candidatesByDate.get(examDate) || new Set<number>();
+      if (date.scheduledCandidates !== '') candidates.add(Number(date.scheduledCandidates));
+      candidatesByDate.set(examDate, candidates);
+    });
+    return [...candidatesByDate.entries()]
+      .sort(([left], [right]) => left.localeCompare(right))
+      .map(([examDate, candidates]) => ({
+        examDate,
+        scheduledCandidates: candidates.size
+          ? [...candidates].reduce((total, count) => total + count, 0)
+          : '',
+      }));
+  };
+  const templateRows = requirementGroups.flatMap(group => {
+    const requirement = group[0];
+    const dates = getRequirementDates(group);
     return dates.map(date => [
       requirement.clientName,
       requirement.examName,
@@ -126,10 +158,11 @@ export function createInstallationTemplate(
     { Name: 'InstallationTypes', Ref: "'_Lists'!$A$2:$A$3" },
     { Name: 'YesNoOptions', Ref: "'_Lists'!$B$2:$B$3" },
     { Name: 'StorageTypes', Ref: "'_Lists'!$C$2:$C$3" },
-    { Name: 'StorageUnits', Ref: "'_Lists'!$D$2:$D$3" },
+    { Name: 'StorageQuantities', Ref: `'_Lists'!$D$2:$D$${STORAGE_QUANTITIES.length + 1}` },
+    { Name: 'StorageSizes', Ref: `'_Lists'!$E$2:$E$${STORAGE_SIZE_OPTIONS.length + 1}` },
   ];
   zones.forEach((zone, index) => {
-    const column = excelColumn(5 + index);
+    const column = excelColumn(6 + index);
     const count = Math.max(1, vendorNamesByZone.get(zone)?.length || 0);
     const rangeName = vendorRangeNames.get(zone)!;
     definedNames.push({
@@ -151,20 +184,19 @@ export function createInstallationTemplate(
   ];
   const storageStartColumn = columnIndex('Internet Provided') + 1;
   for (let slot = 0; slot < STORAGE_TEMPLATE_SLOTS; slot += 1) {
-    const startColumn = storageStartColumn + slot * 4;
+    const startColumn = storageStartColumn + slot * 3;
     validations.push(
       `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn)}2:${excelColumn(startColumn)}${validationEndRow}"><formula1>StorageTypes</formula1></dataValidation>`,
-      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn + 3)}2:${excelColumn(startColumn + 3)}${validationEndRow}"><formula1>StorageUnits</formula1></dataValidation>`,
-      `<dataValidation type="whole" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn + 1)}2:${excelColumn(startColumn + 1)}${validationEndRow}"><formula1>1</formula1></dataValidation>`,
-      `<dataValidation type="decimal" operator="greaterThanOrEqual" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn + 2)}2:${excelColumn(startColumn + 2)}${validationEndRow}"><formula1>0</formula1></dataValidation>`
+      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn + 1)}2:${excelColumn(startColumn + 1)}${validationEndRow}"><formula1>StorageQuantities</formula1></dataValidation>`,
+      `<dataValidation type="list" allowBlank="1" showErrorMessage="1" errorStyle="stop" sqref="${excelColumn(startColumn + 2)}2:${excelColumn(startColumn + 2)}${validationEndRow}"><formula1>StorageSizes</formula1></dataValidation>`
     );
   }
   const vendorValidationRows = new Map<string, number[]>();
   let templateRow = 2;
-  requirements.forEach(requirement => {
+  requirementGroups.forEach(group => {
+    const requirement = group[0];
     const rangeName = vendorRangeNames.get(requirement.zone);
-    const recordsDates = existingDates.filter(date => date.requirementId === requirement.id);
-    const rowCount = Math.max(1, recordsDates.length);
+    const rowCount = getRequirementDates(group).length;
     if (rangeName) {
       const rows = vendorValidationRows.get(rangeName) || [];
       for (let rowOffset = 0; rowOffset < rowCount; rowOffset += 1) rows.push(templateRow + rowOffset);
@@ -367,15 +399,20 @@ export function parseBulkInstallationFile(file: File): Promise<BulkInstallationR
               const text = String(value ?? '').trim();
               return text ? Number(text) : 0;
             };
-            const storageItems = Array.from({ length: STORAGE_TEMPLATE_SLOTS }, (_, index) => {
+            const storageItems = Array.from({ length: LEGACY_STORAGE_SLOT_LIMIT }, (_, index) => {
               const slot = index + 1;
               const legacyFirstSlot = slot === 1;
               const type = String(r[`Storage ${slot} Type`] ?? (legacyFirstSlot ? r['Storage Type'] : '') ?? '').trim();
               const quantity = readNumber(r[`Storage ${slot} Quantity`] ?? (legacyFirstSlot ? r['Storage Quantity'] : ''));
-              const size = readNumber(r[`Storage ${slot} Size`] ?? (legacyFirstSlot ? r['Storage Size'] : ''));
+              const sizeValue = String(r[`Storage ${slot} Size`] ?? (legacyFirstSlot ? r['Storage Size'] : '') ?? '').trim();
               const unitValue = r[`Storage ${slot} Unit`];
               const legacyUnit = String(r['Storage Unit'] ?? '').trim();
-              const unit = String(unitValue ??
+              const marketSize = STORAGE_SIZE_OPTIONS.find(option =>
+                option.label.toLocaleLowerCase() === sizeValue.toLocaleLowerCase()
+              );
+              const sizeMatch = sizeValue.match(/^(\d+(?:\.\d+)?)\s*(GB|TB)$/i);
+              const size = marketSize?.size ?? (sizeMatch ? Number(sizeMatch[1]) : readNumber(sizeValue));
+              const unit = marketSize?.unit ?? sizeMatch?.[2]?.toUpperCase() ?? String(unitValue ??
                 (legacyFirstSlot ? legacyUnit || (unitValue === undefined ? 'GB' : '') : '')).trim();
               return { type, quantity, size, unit };
             }).filter(item => item.type || item.quantity || item.size || item.unit);

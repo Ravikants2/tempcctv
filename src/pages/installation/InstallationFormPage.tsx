@@ -13,17 +13,13 @@ import type {
   QuoteRevision,
   StorageItem,
   StorageType,
-  StorageUnit,
 } from '../../types';
 import { Plus, Trash2, FileText, Eye } from 'lucide-react';
 import { normalizeExamDate } from '../../utils/dates';
 import { sameZone } from '../../utils/vendorCode';
-
-interface ExamDateRow {
-  id: string;
-  examDate: string;
-  scheduledCandidates: number;
-}
+import { getRequirementExamSchedule } from '../../utils/calculations';
+import { getVenueCostHistory } from '../../utils/venueCosts';
+import { STORAGE_QUANTITIES, STORAGE_SIZE_OPTIONS } from '../../utils/storageOptions';
 
 interface StorageFormRow extends StorageItem {
   id: string;
@@ -41,6 +37,7 @@ export default function InstallationFormPage() {
   const [selectedClient, setSelectedClient] = useState('');
   const [selectedExam, setSelectedExam] = useState('');
   const [selectedReqId, setSelectedReqId] = useState('');
+  const [tcCodeInput, setTcCodeInput] = useState('');
 
   // Form state
   const [installationType, setInstallationType] = useState<InstallationType>('Full Vendor');
@@ -53,7 +50,6 @@ export default function InstallationFormPage() {
   const [localVendorCost, setLocalVendorCost] = useState<number | ''>('');
   const [minimumCost, setMinimumCost] = useState<number | ''>('');
   const [remarks, setRemarks] = useState('');
-  const [examDates, setExamDates] = useState<ExamDateRow[]>([]);
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [existingQuotationId, setExistingQuotationId] = useState<string | undefined>();
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'warning'; msg: string } | null>(null);
@@ -67,6 +63,7 @@ export default function InstallationFormPage() {
         setSelectedClient(req.clientName);
         setSelectedExam(req.examName);
         setSelectedReqId(req.id);
+        setTcCodeInput(req.tcCode);
       }
       setInstallationType(existingRecord.installationType);
       setVendorId(existingRecord.vendorId);
@@ -89,31 +86,35 @@ export default function InstallationFormPage() {
       if (existingRecord.minimumCost !== undefined) setMinimumCost(existingRecord.minimumCost);
       setRemarks(existingRecord.approvalStatus === 'returned' ? '' : existingRecord.remarks || '');
       setExistingQuotationId(existingRecord.quotationFileId);
-      const dates = data.examDates.filter(d => d.installationRecordId === existingRecord.id);
-      setExamDates(dates.map(d => ({ id: d.id, examDate: normalizeExamDate(d.examDate) || '', scheduledCandidates: d.scheduledCandidates })));
     }
   }, [existingRecord, data]);
-
-  useEffect(() => {
-    if (isEdit || !selectedReqId) return;
-    const requirement = data.requirements.find(item => item.id === selectedReqId);
-    if (!requirement) return;
-    setExamDates(requirement.examDate || requirement.scheduledCandidates !== undefined
-      ? [{
-          id: uuidv4(),
-          examDate: normalizeExamDate(requirement.examDate || '') || '',
-          scheduledCandidates: requirement.scheduledCandidates || 0,
-        }]
-      : []);
-  }, [data.requirements, isEdit, selectedReqId]);
 
   // Derived data
   const scopedRequirements = data.requirements.filter(r => currentUser?.role !== 'zonal_user' || r.zone === currentUser.zone);
   const clients = [...new Set(scopedRequirements.map(r => r.clientName))].sort();
   const exams = [...new Set(scopedRequirements.filter(r => !selectedClient || r.clientName === selectedClient).map(r => r.examName))].sort();
-  const venues = scopedRequirements.filter(r => r.clientName === selectedClient && r.examName === selectedExam);
+  const venueRequirements = scopedRequirements.filter(r => r.clientName === selectedClient && r.examName === selectedExam);
+  const venues = [...new Map(venueRequirements.map(requirement => [requirement.tcCode, requirement])).values()];
   const selectedReq = scopedRequirements.find(r => r.id === selectedReqId);
   const zoneVendors = data.vendors.filter(v => selectedReq && sameZone(v.zone, selectedReq.zone));
+  const examDates = selectedReq
+    ? getRequirementExamSchedule(selectedReq.id, data.requirements, data.installations, data.examDates)
+    : [];
+  const totalCandidates = examDates.reduce((total, date) => total + date.scheduledCandidates, 0);
+  const uniqueDates = [...new Set(examDates.map(date => date.examDate))];
+  const costHistory = selectedReq
+    ? getVenueCostHistory(
+        selectedReq,
+        data.installations,
+        scopedRequirements,
+        data.vendors,
+        data.examDates
+      )
+    : [];
+  const previousCost = costHistory[0];
+  const costIncreaseRequiresRemarks = Boolean(
+    previousCost && localVendorCost !== '' && Number(localVendorCost) > previousCost.record.localVendorCost
+  );
   const canEditRecord = !existingRecord ||
     (
       ((currentUser?.role !== 'zonal_user' && currentUser?.role !== 'custom') ||
@@ -130,44 +131,39 @@ export default function InstallationFormPage() {
 
   // Duplicate check on venue selection
   const handleVenueSelect = (reqId: string) => {
+    const requirement = venueRequirements.find(item => item.id === reqId) ||
+      scopedRequirements.find(item => item.id === reqId);
+    if (!requirement) return;
     const existing = data.installations.find(i => i.requirementId === reqId);
     if (existing && !isEdit) {
       navigate(`/installation/edit/${existing.id}`);
       return;
     }
     setSelectedReqId(reqId);
+    setTcCodeInput(requirement.tcCode);
     setVendorId('');
   };
 
-  // Exam dates management
-  const addDateRow = () => setExamDates(prev => [...prev, { id: uuidv4(), examDate: '', scheduledCandidates: 0 }]);
-
-  const updateDateRow = (rowId: string, field: 'examDate' | 'scheduledCandidates', value: string | number) => {
-    setExamDates(prev => {
-      const updated = prev.map(r => r.id === rowId ? { ...r, [field]: value } : r);
-      // Merge duplicate dates within same record
-      if (field === 'examDate') {
-        const dateVal = value as string;
-        const existing = updated.find(r => r.id !== rowId && r.examDate === dateVal);
-        if (existing) {
-          return updated.filter(r => r.id !== rowId).map(r =>
-            r.id === existing.id ? { ...r, scheduledCandidates: r.scheduledCandidates + updated.find(u => u.id === rowId)!.scheduledCandidates } : r
-          );
-        }
-      }
-      return updated;
-    });
+  const handleTcCodeChange = (value: string) => {
+    if (!/^\d*$/.test(value)) return;
+    setTcCodeInput(value);
+    const match = venueRequirements.find(requirement => requirement.tcCode === value);
+    if (!match) {
+      setSelectedReqId('');
+      setVendorId('');
+      return;
+    }
+    handleVenueSelect(match.id);
   };
 
-  const removeDateRow = (rowId: string) => setExamDates(prev => prev.filter(r => r.id !== rowId));
-
   const addStorageItem = () => {
+    if (storageItems.length >= 2) return;
     setStorageProvided(true);
     setStorageItems(previous => [...previous, {
       id: uuidv4(),
       type: 'External HDD',
       quantity: 1,
-      size: 0,
+      size: 1,
       unit: 'TB',
     }]);
   };
@@ -189,8 +185,6 @@ export default function InstallationFormPage() {
   };
 
   // Calculated fields
-  const uniqueDates = [...new Set(examDates.map(d => d.examDate).filter(Boolean))];
-  const totalCandidates = examDates.reduce((s, d) => s + (Number(d.scheduledCandidates) || 0), 0);
   const perCandidateCost = totalCandidates > 0 && localVendorCost !== '' ? Number(localVendorCost) / totalCandidates : 0;
 
   const handleQuotationChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -211,21 +205,31 @@ export default function InstallationFormPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!selectedReqId) { setAlert({ type: 'error', msg: 'Please select a venue.' }); return; }
+    if (!tcCodeInput || !selectedReqId) {
+      setAlert({ type: 'error', msg: 'Select a TC code from the matching Requirements list before submitting.' });
+      return;
+    }
     if (!scopedRequirements.some(requirement => requirement.id === selectedReqId)) {
       setAlert({ type: 'error', msg: 'You can only submit a quote for a venue in your assigned zone.' });
       return;
     }
     if (!vendorId) { setAlert({ type: 'error', msg: 'Please select a vendor.' }); return; }
-    if (examDates.filter(d => d.examDate).length === 0) { setAlert({ type: 'error', msg: 'At least one exam date is required.' }); return; }
+    if (examDates.length === 0) {
+      setAlert({ type: 'error', msg: 'No exam schedule is recorded for this venue. Add its date and candidate count in Requirements first.' });
+      return;
+    }
     if (storageProvided && (storageItems.length === 0 || storageItems.some(item =>
-      !item.type || !Number.isInteger(item.quantity) || item.quantity < 1 ||
-      !Number.isFinite(item.size) || item.size < 0 || !item.unit
+      !item.type || !Number.isInteger(item.quantity) || item.quantity < 1 || item.quantity > 10 ||
+      !STORAGE_SIZE_OPTIONS.some(option => option.size === item.size && option.unit === item.unit)
     ))) {
-      setAlert({ type: 'error', msg: 'Complete the type, quantity, size, and unit for each external storage item.' });
+      setAlert({ type: 'error', msg: 'Choose a storage quantity from 1 to 10 and a size from 32 GB to 8 TB for each item.' });
       return;
     }
     if (localVendorCost === '' || Number(localVendorCost) < 0) { setAlert({ type: 'error', msg: 'Local vendor cost is required.' }); return; }
+    if (costIncreaseRequiresRemarks && remarks.trim().length < 10) {
+      setAlert({ type: 'error', msg: 'A cost increase requires a meaningful reason of at least 10 characters.' });
+      return;
+    }
     if (existingRecord?.approvalStatus === 'returned' && !remarks.trim()) {
       setAlert({ type: 'error', msg: 'Remarks are mandatory when resubmitting a returned quote, including when there are no changes.' });
       return;
@@ -256,9 +260,10 @@ export default function InstallationFormPage() {
 
       const now = new Date().toISOString();
       const recordId = isEdit ? id! : uuidv4();
-      const submittedDates = examDates
-        .filter(d => d.examDate)
-        .map(d => ({ examDate: d.examDate, scheduledCandidates: Number(d.scheduledCandidates) || 0 }));
+      const submittedDates = examDates.map(date => ({
+        examDate: normalizeExamDate(date.examDate) || date.examDate,
+        scheduledCandidates: date.scheduledCandidates,
+      }));
       const submittedStorageItems: StorageItem[] = storageProvided
         ? storageItems.map(({ type, quantity, size, unit }) => ({ type, quantity, size, unit }))
         : [];
@@ -317,7 +322,7 @@ export default function InstallationFormPage() {
         storageItems: submittedStorageItems,
         localVendorCost: Number(localVendorCost),
         minimumCost: minimumCost !== '' ? Number(minimumCost) : undefined,
-        remarks: remarks || undefined,
+        remarks: remarks.trim() || undefined,
         quotationFileId,
         createdBy: isEdit ? (existingRecord?.createdBy || currentUser!.id) : currentUser!.id,
         createdAt: isEdit ? (existingRecord?.createdAt || now) : now,
@@ -330,8 +335,12 @@ export default function InstallationFormPage() {
       };
 
       const newExamDates: ExamDateDetail[] = examDates
-        .filter(d => d.examDate)
-        .map(d => ({ id: d.id, installationRecordId: recordId, examDate: d.examDate, scheduledCandidates: Number(d.scheduledCandidates) || 0 }));
+        .map(date => ({
+          id: uuidv4(),
+          installationRecordId: recordId,
+          examDate: normalizeExamDate(date.examDate) || date.examDate,
+          scheduledCandidates: date.scheduledCandidates,
+        }));
 
       updateData(prev => {
         const installations = isEdit
@@ -388,15 +397,36 @@ export default function InstallationFormPage() {
           <h2 className="font-semibold text-gray-800 mb-4">Venue Selection</h2>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             <Select label="Client Name" value={selectedClient}
-              onChange={e => { setSelectedClient(e.target.value); setSelectedExam(''); setSelectedReqId(''); }}
+              onChange={e => {
+                setSelectedClient(e.target.value);
+                setSelectedExam('');
+                setSelectedReqId('');
+                setTcCodeInput('');
+              }}
               options={clients.map(c => ({ value: c, label: c }))} placeholder="Select Client" required disabled={isEdit} />
             <Select label="Exam Name" value={selectedExam}
-              onChange={e => { setSelectedExam(e.target.value); setSelectedReqId(''); }}
+              onChange={e => {
+                setSelectedExam(e.target.value);
+                setSelectedReqId('');
+                setTcCodeInput('');
+              }}
               options={exams.map(e => ({ value: e, label: e }))} placeholder="Select Exam" required disabled={isEdit || !selectedClient} />
-            <Select label="Venue (TC Code)" value={selectedReqId}
-              onChange={e => handleVenueSelect(e.target.value)}
-              options={venues.map(v => ({ value: v.id, label: `${v.tcCode} - ${v.tcName}` }))}
-              placeholder="Select Venue" required disabled={isEdit || !selectedExam} />
+            <div>
+              <Input label="Search / select TC Code" value={tcCodeInput}
+                onChange={e => handleTcCodeChange(e.target.value)}
+                list="record-tc-code-options" inputMode="numeric" pattern="[0-9]*"
+                placeholder="Enter or select a numeric TC code" required disabled={isEdit || !selectedExam} />
+              <datalist id="record-tc-code-options">
+                {venues.map(venue => (
+                  <option key={venue.id} value={venue.tcCode} label={`${venue.tcCode} - ${venue.tcName}`} />
+                ))}
+              </datalist>
+              {tcCodeInput && !selectedReq && (
+                <p className="mt-1 text-xs text-amber-700">
+                  TC Name: Temp. This code is not in Requirements for the selected client and exam; add it there before submitting.
+                </p>
+              )}
+            </div>
           </div>
           {selectedReq && (
             <div className="mt-4 grid grid-cols-2 sm:grid-cols-4 gap-3 bg-gray-50 rounded-lg p-3 text-sm">
@@ -405,40 +435,38 @@ export default function InstallationFormPage() {
                 ['State', selectedReq.state],
                 ['City', selectedReq.city],
                 ['TC Name', selectedReq.tcName],
-                ['Date of Exam', selectedReq.examDate || '—'],
-                ['Candidate Count', selectedReq.scheduledCandidates?.toLocaleString('en-IN') || '—'],
+                ['Exam Days', String(uniqueDates.length)],
+                ['Total Candidates', totalCandidates.toLocaleString('en-IN')],
               ].map(([k, v]) => (
                 <div key={k}><span className="text-xs text-gray-500">{k}</span><p className="font-medium">{v}</p></div>
               ))}
             </div>
           )}
-        </section>
-
-        {/* Exam Dates */}
-        <section className="bg-white border rounded-xl p-5 shadow-sm">
-          <div className="flex items-center justify-between mb-4">
-            <h2 className="font-semibold text-gray-800">Examination Details</h2>
-            <Button type="button" size="sm" onClick={addDateRow}><Plus size={14} /> Add Date</Button>
-          </div>
-          {(selectedReq?.examDate || selectedReq?.scheduledCandidates !== undefined) && (
-            <p className="mb-3 text-xs text-slate-500">Exam date and candidate count are prefilled from the requirement and can be adjusted for this record.</p>
+          {selectedReq && (
+            <div className="mt-4 overflow-x-auto">
+              <h3 className="mb-2 text-sm font-semibold text-slate-700">Exam schedule from Requirements</h3>
+              {examDates.length > 0 ? (
+                <table className="w-full text-sm">
+                  <thead><tr className="border-b text-left text-xs text-slate-500">
+                    <th className="py-2 pr-4">Exam Date</th>
+                    <th className="py-2 text-right">Scheduled Candidates</th>
+                  </tr></thead>
+                  <tbody>{examDates.map(date => (
+                    <tr key={date.examDate} className="border-b border-slate-100">
+                      <td className="py-2 pr-4">{date.examDate}</td>
+                      <td className="py-2 text-right">{date.scheduledCandidates.toLocaleString('en-IN')}</td>
+                    </tr>
+                  ))}</tbody>
+                  <tfoot><tr className="font-semibold">
+                    <td className="py-2 pr-4">Total</td>
+                    <td className="py-2 text-right">{totalCandidates.toLocaleString('en-IN')}</td>
+                  </tr></tfoot>
+                </table>
+              ) : (
+                <p className="text-sm text-amber-700">No exam schedule is recorded. Add exam dates and candidate counts in Requirements.</p>
+              )}
+            </div>
           )}
-          {examDates.length === 0 && <p className="text-sm text-gray-400">No exam dates added. At least one is required.</p>}
-          <div className="space-y-2">
-            {examDates.map(row => (
-              <div key={row.id} className="flex gap-3 items-end">
-                <Input label={examDates.indexOf(row) === 0 ? 'Exam Date' : undefined} type="date" value={row.examDate}
-                  onChange={e => updateDateRow(row.id, 'examDate', e.target.value)} className="w-40" />
-                <Input label={examDates.indexOf(row) === 0 ? 'Scheduled Candidates' : undefined} type="number" min={0}
-                  value={row.scheduledCandidates} onChange={e => updateDateRow(row.id, 'scheduledCandidates', Number(e.target.value))} className="w-40" />
-                <Button type="button" variant="ghost" size="sm" onClick={() => removeDateRow(row.id)} className="mb-0.5"><Trash2 size={14} /></Button>
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 flex gap-6 text-sm text-gray-600">
-            <span>Exam Days: <strong>{uniqueDates.length}</strong></span>
-            <span>Total Candidates: <strong>{totalCandidates.toLocaleString('en-IN')}</strong></span>
-          </div>
         </section>
 
         {/* Vendor & Installation */}
@@ -455,7 +483,11 @@ export default function InstallationFormPage() {
             <Input label="Camera Count" type="number" min={0} value={cameraCount}
               onChange={e => setCameraCount(Number(e.target.value))} />
             <Input label="Local Vendor Cost (₹, Excl. Tax)" type="number" min={0} step="0.01"
-              value={localVendorCost} onChange={e => setLocalVendorCost(e.target.value === '' ? '' : Number(e.target.value))} required />
+              value={localVendorCost} onChange={e => {
+                const nextCost = e.target.value === '' ? '' : Number(e.target.value);
+                setLocalVendorCost(nextCost);
+                if (previousCost && nextCost !== '' && nextCost > previousCost.record.localVendorCost) setRemarks('');
+              }} required />
             <Input label="Minimum Cost (₹, optional)" type="number" min={0} step="0.01"
               value={minimumCost} onChange={e => setMinimumCost(e.target.value === '' ? '' : Number(e.target.value))} />
             <div className="flex flex-col gap-1">
@@ -465,6 +497,32 @@ export default function InstallationFormPage() {
               </div>
             </div>
           </div>
+          {costHistory.length > 0 && (
+            <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
+              <h3 className="mb-2 text-sm font-semibold text-slate-800">Previous quotes for this TC code or venue</h3>
+              <div className="space-y-2">
+                {costHistory.map(history => (
+                  <div key={history.record.id} className="border-t border-slate-200 pt-2 text-xs text-slate-700 first:border-0 first:pt-0">
+                    <p className="font-medium">
+                      ₹{history.record.localVendorCost.toLocaleString('en-IN')} · {history.requirement.clientName} · {history.requirement.examName}
+                    </p>
+                    <p>
+                      TC {history.requirement.tcCode} - {history.requirement.tcName} · {history.requirement.zone}, {history.requirement.state}, {history.requirement.city}
+                    </p>
+                    <p>
+                      Exam dates: {history.examDates.length ? history.examDates.join(', ') : 'Not recorded'} · Candidates: {history.totalCandidates.toLocaleString('en-IN')} · Per candidate: {history.totalCandidates > 0 ? `₹${(history.record.localVendorCost / history.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · Vendor: {history.vendorName} · Updated: {new Date(history.record.updatedAt).toLocaleDateString('en-IN')}
+                    </p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+          {costIncreaseRequiresRemarks && previousCost && (
+            <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
+              This quote is higher than the latest previous total quote of ₹{previousCost.record.localVendorCost.toLocaleString('en-IN')}.
+              Enter a clear reason of at least 10 characters in Remarks. Approvers will see it with this quote.
+            </div>
+          )}
           <div className="mt-4 flex flex-wrap gap-6">
             {[['proxyProvided', 'Proxy System Provided', proxyProvided, setProxyProvided],
               ['internetProvided', 'Internet Provided', internetProvided, setInternetProvided]].map(([key, label, val, setter]) => (
@@ -481,7 +539,7 @@ export default function InstallationFormPage() {
         <section className="bg-white border rounded-xl p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-semibold text-gray-800">External Storage</h2>
-            {storageProvided && (
+            {storageProvided && storageItems.length < 2 && (
               <Button type="button" size="sm" variant="outline" onClick={addStorageItem}>
                 <Plus size={14} /> Add Storage
               </Button>
@@ -497,20 +555,29 @@ export default function InstallationFormPage() {
             External Storage Provided
           </label>
           {storageProvided && storageItems.map((item, index) => (
-            <div key={item.id} className="mb-3 grid grid-cols-2 items-end gap-4 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_1fr_1fr_auto]">
+            <div key={item.id} className="mb-3 grid grid-cols-2 items-end gap-4 rounded-lg border border-slate-200 p-3 sm:grid-cols-[1fr_1fr_1fr_auto]">
               <Select label={`Storage ${index + 1} Type`} value={item.type}
                 onChange={e => updateStorageItem(item.id, 'type', e.target.value as StorageType)}
                 options={[{ value: 'Pen Drive', label: 'Pen Drive' }, { value: 'External HDD', label: 'External HDD' }]} />
-              <Input label="Quantity" type="number" min={1} step={1} value={item.quantity}
-                onChange={e => updateStorageItem(item.id, 'quantity', Number(e.target.value))} />
-              <Input label="Size" type="number" min={0} step="0.01" value={item.size || ''}
-                onChange={e => updateStorageItem(item.id, 'size', Number(e.target.value))} />
-              <Select label="Unit" value={item.unit} onChange={e => updateStorageItem(item.id, 'unit', e.target.value as StorageUnit)}
-                options={[{ value: 'GB', label: 'GB' }, { value: 'TB', label: 'TB' }]} />
+              <Select label="Quantity" value={String(item.quantity)}
+                onChange={e => updateStorageItem(item.id, 'quantity', Number(e.target.value))}
+                options={STORAGE_QUANTITIES.map(quantity => ({ value: String(quantity), label: String(quantity) }))} />
+              <Select label="Size" value={`${item.size} ${item.unit}`}
+                onChange={e => {
+                  const selectedSize = STORAGE_SIZE_OPTIONS.find(option => option.label === e.target.value);
+                  if (selectedSize) {
+                    updateStorageItem(item.id, 'size', selectedSize.size);
+                    updateStorageItem(item.id, 'unit', selectedSize.unit);
+                  }
+                }}
+                options={STORAGE_SIZE_OPTIONS.map(option => ({ value: option.label, label: option.label }))} />
               <Button type="button" variant="ghost" size="sm" onClick={() => removeStorageItem(item.id)}
                 aria-label={`Remove storage ${index + 1}`}><Trash2 size={14} /></Button>
             </div>
           ))}
+          {storageProvided && storageItems.length < 2 && (
+            <p className="text-xs text-slate-500">Up to two storage types can be added.</p>
+          )}
         </section>
 
         {/* Supporting Info */}
@@ -528,9 +595,12 @@ export default function InstallationFormPage() {
                 )}
               </div>
             )}
-            <Textarea label={existingRecord?.approvalStatus === 'returned' ? 'Resubmission remarks (required)' : 'Remarks'}
+            <Textarea label={costIncreaseRequiresRemarks
+              ? 'Remarks (required: explain the higher quote)'
+              : existingRecord?.approvalStatus === 'returned' ? 'Resubmission remarks (required)' : 'Remarks'}
               value={remarks} onChange={e => setRemarks(e.target.value)} rows={3}
-              required={existingRecord?.approvalStatus === 'returned'} />
+              required={costIncreaseRequiresRemarks || existingRecord?.approvalStatus === 'returned'}
+              minLength={costIncreaseRequiresRemarks ? 10 : undefined} />
             <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Quotation PDF (optional)</label>
               <div className="flex items-center gap-3">

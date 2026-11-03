@@ -89,12 +89,13 @@ describe('groupRequirementExamDetails', () => {
     const groups = groupRequirementExamDetails([
       req1,
       { ...req1, id: 'r1-date-one', examDate: '2024-03-01', scheduledCandidates: 100 },
+      { ...req1, id: 'r1-date-one-exact-duplicate', examDate: '2024-03-01', scheduledCandidates: 100 },
       { ...req1, id: 'r1-date-one-duplicate', examDate: '2024-03-01', scheduledCandidates: 25 },
       { ...req1, id: 'r1-date-two', examDate: '2024-03-02', scheduledCandidates: 150 },
     ]);
 
     expect(groups).toHaveLength(1);
-    expect(groups[0].requirementIds).toHaveLength(4);
+    expect(groups[0].requirementIds).toHaveLength(5);
     expect(groups[0].requirement.examDate).toBe('2024-03-01');
     expect(groups[0].examDates).toEqual([
       { examDate: '2024-03-01', scheduledCandidates: 125 },

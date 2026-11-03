@@ -208,6 +208,8 @@ export default function RequirementsPage() {
     if (dup) { setFormError('Duplicate: Client + Exam + TC Code already exists.'); return; }
     const newReq: RequirementMaster = {
       id: uuidv4(), zone, state, city, tcCode, tcName, clientName, examName,
+      examDate: form.examDate ? normalizeExamDate(form.examDate) || undefined : undefined,
+      scheduledCandidates: form.scheduledCandidates,
       createdBy: currentUser!.id, createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
     };
     updateData(prev => ({ ...prev, requirements: [...prev.requirements, newReq] }));

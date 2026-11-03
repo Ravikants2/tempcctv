@@ -237,6 +237,41 @@ describe('filtered operational Excel exports', () => {
       row['Exam Name'] === requirement.examName && row['TC Code'] === requirement.tcCode)).toBe(true);
   });
 
+  it('removes duplicate schedule rows and limits storage fields to two dropdown slots', () => {
+    const requirement = {
+      ...makeRequirement(8),
+      examDate: '2026-12-10',
+      scheduledCandidates: 240,
+    };
+    const duplicateRequirement = {
+      ...requirement,
+      id: 'requirement-8-duplicate',
+    };
+    const template = createInstallationTemplate(
+      [requirement, duplicateRequirement],
+      [makeVendor(8)],
+      [
+        { requirementId: requirement.id, examDate: '2026-12-10', scheduledCandidates: 240 },
+        { requirementId: duplicateRequirement.id, examDate: '2026-12-10', scheduledCandidates: 240 },
+      ]
+    );
+    const workbook = XLSX.read(template, { type: 'array' });
+    const headers = readHeaders(workbook, 'Template') as string[];
+    const rows = readRows(workbook, 'Template');
+    const worksheetXml = strFromU8(unzipSync(template)['xl/worksheets/sheet1.xml']);
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({
+      'Exam Date': expect.any(Number),
+      'Scheduled Candidates': 240,
+    });
+    expect(headers).toContain('Storage 2 Type');
+    expect(headers).not.toContain('Storage 3 Type');
+    expect(headers).not.toContain('Storage 1 Unit');
+    expect(worksheetXml).toContain('<formula1>StorageQuantities</formula1>');
+    expect(worksheetXml).toContain('<formula1>StorageSizes</formula1>');
+  });
+
   it('parses multiple storage entries from bulk installation rows', async () => {
     const worksheet = XLSX.utils.aoa_to_sheet([[
       'Client Name', 'Exam Name', 'TC Code', 'Exam Date', 'Scheduled Candidates',
