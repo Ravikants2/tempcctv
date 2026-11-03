@@ -26,7 +26,10 @@ export function getInitialData(): AppData {
     accessRoles: [],
     userGroups: [],
     auditLogs: [],
-    approvalAlertCriteria: { daysBeforeExam: 7 },
+    approvalAlertCriteria: {
+      approvalDaysBeforeExam: 7,
+      quotationDaysBeforeExam: 7,
+    },
   };
 }
 
@@ -64,13 +67,25 @@ export function normalizeAppData(data: Partial<AppData>): AppData {
     accessRoles: Array.isArray(data.accessRoles) ? data.accessRoles : [],
     userGroups,
     auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
-    approvalAlertCriteria: data.approvalAlertCriteria &&
-      Number.isInteger(data.approvalAlertCriteria.daysBeforeExam) &&
-      data.approvalAlertCriteria.daysBeforeExam >= 1 &&
-      data.approvalAlertCriteria.daysBeforeExam <= 365
-      ? data.approvalAlertCriteria
-      : initial.approvalAlertCriteria,
+    approvalAlertCriteria: {
+      approvalDaysBeforeExam: validAlertDays(
+        data.approvalAlertCriteria?.approvalDaysBeforeExam ??
+        data.approvalAlertCriteria?.daysBeforeExam,
+        initial.approvalAlertCriteria?.approvalDaysBeforeExam ?? 7
+      ),
+      quotationDaysBeforeExam: validAlertDays(
+        data.approvalAlertCriteria?.quotationDaysBeforeExam ??
+        data.approvalAlertCriteria?.daysBeforeExam,
+        initial.approvalAlertCriteria?.quotationDaysBeforeExam ?? 7
+      ),
+    },
   };
+}
+
+function validAlertDays(value: number | undefined, fallback: number): number {
+  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= 365
+    ? value
+    : fallback;
 }
 
 export function isApiConfigured(): boolean {

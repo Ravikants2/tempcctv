@@ -35,10 +35,11 @@ export default function InstallationFormPage() {
 
   const isEdit = !!id;
   const existingRecord = isEdit ? data.installations.find(i => i.id === id) : undefined;
+  const searchParams = new URLSearchParams(window.location.search);
 
   // Selection state
-  const [selectedClient, setSelectedClient] = useState('');
-  const [selectedExam, setSelectedExam] = useState('');
+  const [selectedClient, setSelectedClient] = useState(searchParams.get('client') || '');
+  const [selectedExam, setSelectedExam] = useState(searchParams.get('exam') || '');
   const [selectedReqId, setSelectedReqId] = useState('');
   const [tcCodeInput, setTcCodeInput] = useState('');
 

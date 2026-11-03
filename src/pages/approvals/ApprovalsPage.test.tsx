@@ -90,11 +90,11 @@ describe('ApprovalsPage', () => {
     render(<ApprovalsPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Cost alert details for TC Code TC-100/ }));
-    expect(screen.getByText(/Current quote increased 25% compared with its previous quote/)).toBeInTheDocument();
+    expect(screen.getByText(/Current total quotation \(₹12,500\) exceeds the previous venue quotation \(₹10,000\)/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /Close/i }));
 
     fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
-    expect(screen.getByText(/Remarks are mandatory when approving a cost alert or exception/)).toBeInTheDocument();
+    expect(screen.getByText(/Remarks are mandatory when approving a quote above its previous total cost/)).toBeInTheDocument();
     expect(updateData).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Approval remarks for TC Code TC-100' }), {
@@ -129,8 +129,7 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    const alertLink = screen.getByRole('button', { name: /TC TC-100.*View for approval/ });
-    expect(alertLink).toHaveTextContent('3 days remaining');
+    const alertLink = screen.getByRole('button', { name: 'Client · Exam (1 venue)' });
     fireEvent.click(alertLink);
 
     expect(screen.getByRole('combobox', { name: 'Client Name' })).toHaveValue('Client');
@@ -141,13 +140,14 @@ describe('ApprovalsPage', () => {
     render(<ApprovalsPage />);
 
     fireEvent.click(screen.getByRole('button', { name: /Send back/ }));
-    expect(screen.getByText('Remarks are mandatory when sending a quote back.')).toBeInTheDocument();
+    expect(screen.getByRole('dialog')).toBeInTheDocument();
     expect(updateData).not.toHaveBeenCalled();
 
-    fireEvent.change(screen.getByRole('textbox', { name: 'Approval remarks for TC Code TC-100' }), {
+    fireEvent.change(screen.getByRole('textbox', { name: 'Reason for sending back' }), {
       target: { value: 'Please confirm the camera count and update the quote.' },
     });
-    fireEvent.click(screen.getByRole('button', { name: /Send back/ }));
+    const confirmSendBackButtons = screen.getAllByRole('button', { name: /^Send back$/ });
+    fireEvent.click(confirmSendBackButtons[confirmSendBackButtons.length - 1]);
 
     expect(updatedData?.installations[0].approvalStatus).toBe('returned');
     expect(updatedData?.installations[0].approvalStage).toBe('surveillance_head');
@@ -175,20 +175,45 @@ describe('ApprovalsPage', () => {
     expect(updatedData?.installations[0].approvalStage).toBe('enablement_head');
   });
 
+  it('does not request approval remarks or exception approval for a normal-cost quote', () => {
+    const normalCostData: AppData = {
+      ...initialData,
+      installations: [{ ...initialData.installations[0], localVendorCost: 10000 }],
+      quoteRevisions: initialData.quoteRevisions.map(revision => ({
+        ...revision,
+        localVendorCost: 10000,
+      })),
+    };
+    mockData = normalCostData;
+    mockAuthData(mockData);
+
+    render(<ApprovalsPage />);
+
+    expect(screen.queryByRole('textbox', { name: /Approval remarks/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole('checkbox', { name: /Exception approval/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
+
+    expect(updatedData?.approvalEvents[0]).toMatchObject({
+      action: 'approved',
+      remarks: '',
+      exception: undefined,
+    });
+  });
+
   it('approves one venue at a time and requires remarks for cost discrepancies', () => {
     render(<ApprovalsPage />);
 
     expect(screen.getByText('Test Venue')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
 
-    expect(screen.getByText(/Remarks are mandatory when approving a cost alert or exception/)).toBeInTheDocument();
+    expect(screen.getByText(/Remarks are mandatory when approving a quote above its previous total cost/)).toBeInTheDocument();
     expect(updateData).not.toHaveBeenCalled();
 
     fireEvent.change(screen.getByRole('textbox', { name: 'Approval remarks for TC Code TC-100' }), {
       target: { value: 'Reviewed the venue increase against the updated scope.' },
     });
     fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
-    expect(screen.getByText('Cost alerts require an explicit exception approval.')).toBeInTheDocument();
+    expect(screen.getByText('Higher-cost quotes require explicit exception approval.')).toBeInTheDocument();
     expect(updateData).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole('checkbox', { name: /Exception approval/ }));
     fireEvent.click(screen.getByRole('button', { name: /^Approve$/ }));
@@ -364,7 +389,7 @@ describe('ApprovalsPage', () => {
     fireEvent.click(screen.getByLabelText('Select all matching TC venues'));
     fireEvent.click(screen.getByRole('button', { name: 'Approve selected (2)' }));
 
-    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Cost alert requires remarks and exception approval'));
+    expect(window.confirm).toHaveBeenCalledWith(expect.stringContaining('Higher-cost approval requires remarks and exception approval'));
     expect(updatedData?.installations.find(record => record.id === 'installation-1')?.approvalStage).toBe('surveillance_head');
     expect(updatedData?.installations.find(record => record.id === 'installation-2')?.approvalStage).toBe('enablement_head');
     expect(updatedData?.approvalEvents.map(event => event.installationRecordId)).toEqual(['installation-2']);

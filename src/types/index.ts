@@ -142,7 +142,9 @@ export interface BlanketApproval {
 }
 
 export interface ApprovalAlertCriteria {
-  daysBeforeExam: number;
+  approvalDaysBeforeExam: number;
+  quotationDaysBeforeExam: number;
+  daysBeforeExam?: number;
 }
 
 export interface ExamDateDetail {
@@ -188,7 +190,7 @@ export interface AppData {
   accessRoles: AccessRole[];
   userGroups: UserGroup[];
   auditLogs: AuditLog[];
-  approvalAlertCriteria?: ApprovalAlertCriteria;
+  approvalAlertCriteria?: Partial<ApprovalAlertCriteria>;
 }
 
 export interface DashboardFilters {

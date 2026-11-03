@@ -6,11 +6,12 @@ import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/FormFields';
 import { KPICard } from '../../components/ui/index';
 import { downloadInstallationTemplate, exportRecordsToExcel } from '../../utils/excel';
-import { getInstallationStats } from '../../utils/calculations';
+import { getInstallationStats, getRequirementExamSchedule } from '../../utils/calculations';
 import { ChevronDown, Download, Eye, Menu, Pencil } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { CostValue } from '../../components/ui/CostValue';
-import { normalizeExamDate } from '../../utils/dates';
+import { daysUntilExam, normalizeExamDate } from '../../utils/dates';
+import { getPreviousVenueQuote, getVenueCostHistory } from '../../utils/venueCosts';
 
 const PAGE_SIZE = 10;
 
@@ -119,6 +120,35 @@ export default function RecordsPage() {
       return groups;
     }, new Map<string, { clientName: string; examName: string; count: number }>()).values()]
     .sort((left, right) => left.clientName.localeCompare(right.clientName) || left.examName.localeCompare(right.examName));
+  const quotationAlertDays = data.approvalAlertCriteria?.quotationDaysBeforeExam ??
+    data.approvalAlertCriteria?.daysBeforeExam ?? 7;
+  const submittedVenueKeys = new Set(scopedInstallations.flatMap(installation => {
+    const requirement = scopedRequirements.find(item => item.id === installation.requirementId);
+    return requirement
+      ? [[requirement.clientName, requirement.examName, requirement.tcCode].map(value => value.trim().toLocaleLowerCase()).join('\u0000')]
+      : [];
+  }));
+  const unquotedVenues = [...new Map(scopedRequirements.flatMap(requirement => {
+    const venueKey = [requirement.clientName, requirement.examName, requirement.tcCode]
+      .map(value => value.trim().toLocaleLowerCase()).join('\u0000');
+    if (submittedVenueKeys.has(venueKey)) return [];
+    const schedule = getRequirementExamSchedule(
+      requirement.id, scopedRequirements, scopedInstallations, data.examDates
+    );
+    const approaching = schedule.some(item => {
+      const days = daysUntilExam(item.examDate);
+      return days !== null && days <= quotationAlertDays;
+    });
+    return approaching ? [[venueKey, requirement] as const] : [];
+  })).values()];
+  const quotationsToProvide = [...unquotedVenues.reduce((projects, requirement) => {
+    const key = `${requirement.clientName}\u0000${requirement.examName}`;
+    const project = projects.get(key) || { clientName: requirement.clientName, examName: requirement.examName, count: 0 };
+    project.count += 1;
+    projects.set(key, project);
+    return projects;
+  }, new Map<string, { clientName: string; examName: string; count: number }>()).values()]
+    .sort((left, right) => left.clientName.localeCompare(right.clientName) || left.examName.localeCompare(right.examName));
   const templateVendors = data.vendors.filter(vendor =>
     currentUser?.role !== 'zonal_user' ||
     scopedRequirements.some(requirement => requirement.zone === vendor.zone)
@@ -200,6 +230,24 @@ export default function RecordsPage() {
         <KPICard title="Sent back" value={returnedCount}
           subtitle="Changes requested" color="red" onClick={() => showApprovalStatus('returned')} />
       </div>
+
+      {can('create_installation') && quotationsToProvide.length > 0 && (
+        <section className="mb-5 space-y-2 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label="Quotations to provide">
+          <h2 className="font-semibold text-amber-950">Quotations to provide</h2>
+          <div className="flex flex-wrap gap-2">
+            {quotationsToProvide.map(project => (
+              <button key={`${project.clientName}-${project.examName}`} type="button"
+                onClick={() => navigate(`/installation/new?${new URLSearchParams({
+                  client: project.clientName,
+                  exam: project.examName,
+                }).toString()}`)}
+                className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-sm font-semibold text-amber-950 hover:bg-amber-100">
+                {project.clientName} · {project.examName} ({project.count})
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
 
       {pendingByProject.length > 0 && (
         <section className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label="Quotations pending approval by client and exam">
@@ -291,6 +339,16 @@ export default function RecordsPage() {
               const req = scopedRequirements.find(r => r.id === inst.requirementId);
               const vendor = data.vendors.find(v => v.id === inst.vendorId);
               const { examDays, totalCandidates } = getInstallationStats(inst, data.examDates);
+              const recordRevisions = data.quoteRevisions
+                .filter(revision => revision.installationRecordId === inst.id)
+                .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+              const venueHistory = req
+                ? getVenueCostHistory(req, scopedInstallations, scopedRequirements, data.vendors, data.examDates, data.quoteRevisions)
+                : [];
+              const previousQuote = req
+                ? getPreviousVenueQuote(venueHistory, inst.id, recordRevisions[recordRevisions.length - 1]?.id)
+                : undefined;
+              const quoteIsHigher = Boolean(previousQuote && inst.localVendorCost > previousQuote.cost);
               return (
                 <tr key={inst.id} className="border-t border-slate-100 transition-colors hover:bg-blue-50/40">
                   <td className="px-3 py-3 text-gray-500">{(currentPage - 1) * PAGE_SIZE + idx + 1}</td>
@@ -302,7 +360,15 @@ export default function RecordsPage() {
                   <td className="px-3 py-3 text-center">{examDays}</td>
                   <td className="px-3 py-3 text-right">{totalCandidates.toLocaleString('en-IN')}</td>
                   <td className="px-3 py-3">{vendor?.vendorName}</td>
-                  <td className="px-3 py-3 text-right font-medium"><CostValue amount={inst.localVendorCost} /></td>
+                  <td className="px-3 py-3 text-right font-medium">
+                    <CostValue amount={inst.localVendorCost} />
+                    {quoteIsHigher && previousQuote && (
+                      <div className="mt-1 text-left text-[10px] leading-snug text-amber-800" role="alert">
+                        Higher than previous quote (₹{previousQuote.cost.toLocaleString('en-IN')})
+                        {inst.remarks && <p className="mt-0.5">Reason: {inst.remarks}</p>}
+                      </div>
+                    )}
+                  </td>
                   <td className="px-3 py-3">
                     {inst.approvalStatus === 'returned'
                       ? <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-800">Changes requested</span>

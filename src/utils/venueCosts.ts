@@ -13,6 +13,18 @@ export interface VenueCostHistoryEntry {
   remarks?: string;
 }
 
+export function getPreviousVenueQuote(
+  history: VenueCostHistoryEntry[],
+  recordId: string,
+  currentRevisionId?: string
+): VenueCostHistoryEntry | undefined {
+  const currentIndex = history.findIndex(entry =>
+    entry.record.id === recordId &&
+    (currentRevisionId ? entry.revisionId === currentRevisionId : !entry.revisionId)
+  );
+  return currentIndex >= 0 ? history[currentIndex + 1] : history[0];
+}
+
 function normalized(value: string): string {
   return value.trim().toLocaleLowerCase();
 }

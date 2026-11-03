@@ -7,6 +7,7 @@ import { TablePagination } from '../../components/ui/TablePagination';
 import { useAuth } from '../../context/AuthContext';
 import { daysUntilExam, formatExamDate, normalizeExamDate } from '../../utils/dates';
 import { exportApprovalsToExcel } from '../../utils/excel';
+import { getPreviousVenueQuote, getVenueCostHistory } from '../../utils/venueCosts';
 import type { ApprovalEvent, ApprovalStage, ApprovalStatus, InstallationRecord, QuoteRevision } from '../../types';
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, Clock3, CornerUpLeft, Download, History } from 'lucide-react';
 
@@ -49,6 +50,8 @@ export default function ApprovalsPage() {
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [remarksByRecord, setRemarksByRecord] = useState<Record<string, string>>({});
   const [exceptionByRecord, setExceptionByRecord] = useState<Record<string, boolean>>({});
+  const [sendBackRecordId, setSendBackRecordId] = useState('');
+  const [sendBackRemarks, setSendBackRemarks] = useState('');
   const [detailRecordId, setDetailRecordId] = useState('');
   const [candidateBreakdownRecordId, setCandidateBreakdownRecordId] = useState('');
   const [alertRecordId, setAlertRecordId] = useState('');
@@ -88,19 +91,18 @@ export default function ApprovalsPage() {
       candidatesByRecord.set(record.id, latestRevision?.totalCandidates ??
         (schedulesByRecord.get(record.id) || []).reduce((total, schedule) => total + schedule.scheduledCandidates, 0));
     });
-    const projectRecords = new Map<string, Array<{ id: string; cost: number; candidates: number; perCandidate: number }>>();
+    const previousQuoteCostByRecord = new Map<string, number>();
     data.installations.forEach(record => {
       const requirement = requirementsById.get(record.requirementId);
       if (!requirement) return;
-      const key = projectKey(requirement);
-      const candidates = candidatesByRecord.get(record.id) || 0;
-      if (candidates > 0) {
-        const peers = projectRecords.get(key) || [];
-        peers.push({ id: record.id, cost: record.localVendorCost, candidates, perCandidate: record.localVendorCost / candidates });
-        projectRecords.set(key, peers);
-      }
+      const history = getVenueCostHistory(
+        requirement, data.installations, data.requirements, data.vendors, data.examDates, data.quoteRevisions
+      );
+      const revisions = revisionsByRecord.get(record.id) || [];
+      const previousQuote = getPreviousVenueQuote(history, record.id, revisions[revisions.length - 1]?.id);
+      if (previousQuote) previousQuoteCostByRecord.set(record.id, previousQuote.cost);
     });
-    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, candidatesByRecord, projectRecords, installationsById, approvalEventsByRecord };
+    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, candidatesByRecord, previousQuoteCostByRecord, installationsById, approvalEventsByRecord };
   }, [data]);
 
   const allowedStages: ApprovalStage[] = [
@@ -172,34 +174,31 @@ export default function ApprovalsPage() {
     ? indexes.requirementsById.get(candidateBreakdownRecord.requirementId)
     : undefined;
 
-  const handleDecision = (record: InstallationRecord, action: 'approved' | 'sent_back') => {
+  const handleDecision = (
+    record: InstallationRecord,
+    action: 'approved' | 'sent_back',
+    remarksOverride?: string
+  ) => {
     const requirement = indexes.requirementsById.get(record.requirementId);
     const stage = record.approvalStage || 'surveillance_head';
     const allowed = stage === 'surveillance_head' ? can('approve_surveillance') : can('approve_enablement');
     if (!allowed) return;
-    const note = (remarksByRecord[record.id] || '').trim();
+    const note = (remarksOverride ?? remarksByRecord[record.id] ?? '').trim();
     const recordRevisionHistory = indexes.revisionsByRecord.get(record.id) || [];
-    const recordPreviousRevision = recordRevisionHistory.length > 1
-      ? recordRevisionHistory[recordRevisionHistory.length - 2]
-      : undefined;
     const recordCostFlags = getCostFlags(
       record,
-      recordPreviousRevision,
-      indexes.candidatesByRecord.get(record.id) || 0,
-      requirement
-        ? (indexes.projectRecords.get(projectKey(requirement)) || []).filter(item => item.id !== record.id)
-        : []
+      indexes.previousQuoteCostByRecord.get(record.id)
     );
     if (action === 'sent_back' && !note) {
       setAlert({ type: 'error', message: 'Remarks are mandatory when sending a quote back.' });
       return;
     }
-    if (action === 'approved' && ((recordCostFlags.length > 0 || exceptionByRecord[record.id]) && !note)) {
-      setAlert({ type: 'error', message: 'Remarks are mandatory when approving a cost alert or exception.' });
+    if (action === 'approved' && recordCostFlags.length > 0 && !note) {
+      setAlert({ type: 'error', message: 'Remarks are mandatory when approving a quote above its previous total cost.' });
       return;
     }
     if (action === 'approved' && recordCostFlags.length > 0 && !exceptionByRecord[record.id]) {
-      setAlert({ type: 'error', message: 'Cost alerts require an explicit exception approval.' });
+      setAlert({ type: 'error', message: 'Higher-cost quotes require explicit exception approval.' });
       return;
     }
     const revision = recordRevisionHistory[recordRevisionHistory.length - 1] || createCurrentQuoteSnapshot(record);
@@ -211,7 +210,9 @@ export default function ApprovalsPage() {
       action,
       userId: currentUser!.id,
       remarks: note,
-      exception: action === 'approved' ? exceptionByRecord[record.id] : undefined,
+      exception: action === 'approved' && recordCostFlags.length > 0
+        ? exceptionByRecord[record.id] || undefined
+        : undefined,
       quoteRevisionId: revision.id,
       createdAt: new Date().toISOString(),
     };
@@ -263,23 +264,16 @@ export default function ApprovalsPage() {
         : can('approve_enablement');
       const history = indexes.revisionsByRecord.get(record.id) || [];
       const revision = history[history.length - 1] || createCurrentQuoteSnapshot(record);
-      const requirement = indexes.requirementsById.get(record.requirementId);
       const flags = getCostFlags(
         record,
-        history.length > 1 ? history[history.length - 2] : undefined,
-        indexes.candidatesByRecord.get(record.id) || 0,
-        requirement
-          ? (indexes.projectRecords.get(projectKey(requirement)) || []).filter(item => item.id !== record.id)
-          : []
+        indexes.previousQuoteCostByRecord.get(record.id)
       );
       const hasRemarks = Boolean((remarksByRecord[record.id] || '').trim());
       const hasException = Boolean(exceptionByRecord[record.id]);
       const reason = !allowed
         ? 'You do not have permission for its approval stage'
         : flags.length > 0 && (!hasRemarks || !hasException)
-            ? 'Cost alert requires remarks and exception approval'
-            : hasException && !hasRemarks
-              ? 'Exception approval requires remarks'
+            ? 'Higher-cost approval requires remarks and exception approval'
               : '';
       return { record, stage, revision, isNewRevision: history.length === 0, reason };
     });
@@ -310,7 +304,12 @@ export default function ApprovalsPage() {
       action: 'approved',
       userId: currentUser!.id,
       remarks: (remarksByRecord[record.id] || '').trim(),
-      exception: exceptionByRecord[record.id] || undefined,
+      exception: getCostFlags(
+        record,
+        indexes.previousQuoteCostByRecord.get(record.id)
+      ).length > 0 && exceptionByRecord[record.id]
+        ? true
+        : undefined,
       quoteRevisionId: revision!.id,
       createdAt: new Date().toISOString(),
     }));
@@ -382,11 +381,7 @@ export default function ApprovalsPage() {
   const alertFlags = alertRecord
     ? getCostFlags(
       alertRecord,
-      (indexes.revisionsByRecord.get(alertRecord.id) || []).slice(-2, -1)[0],
-      indexes.candidatesByRecord.get(alertRecord.id) || 0,
-      alertRequirement
-        ? (indexes.projectRecords.get(projectKey(alertRequirement)) || []).filter(item => item.id !== alertRecord.id)
-        : []
+      indexes.previousQuoteCostByRecord.get(alertRecord.id)
     )
     : [];
   const currentApprovalStages = currentUser?.role === 'surveillance_head'
@@ -439,18 +434,13 @@ export default function ApprovalsPage() {
     surveillance_head: waitingRecords.filter(record => (record.approvalStage || 'surveillance_head') === 'surveillance_head').length,
     enablement_head: waitingRecords.filter(record => record.approvalStage === 'enablement_head').length,
   };
-  const alertDaysBeforeExam = data.approvalAlertCriteria?.daysBeforeExam ?? 7;
+  const alertDaysBeforeExam = data.approvalAlertCriteria?.approvalDaysBeforeExam ??
+    data.approvalAlertCriteria?.daysBeforeExam ?? 7;
   const urgentPending = queue.flatMap(record => {
     const requirement = indexes.requirementsById.get(record.requirementId);
     if (!requirement) return [];
-    const revisions = indexes.revisionsByRecord.get(record.id) || [];
-    const latestRevisionDates = revisions[revisions.length - 1]?.examDates.map(item => item.examDate) || [];
     const recordExamDates = indexes.schedulesByRecord.get(record.id)?.map(item => item.examDate) || [];
-    const scheduledDates = requirement.examDate
-      ? [requirement.examDate]
-      : recordExamDates.length > 0
-        ? recordExamDates
-        : latestRevisionDates;
+    const scheduledDates = requirement.examDate ? [requirement.examDate] : recordExamDates;
     const examDates = scheduledDates
       .map(date => ({ date, days: daysUntilExam(date) }))
       .filter((item): item is { date: string; days: number } =>
@@ -460,9 +450,18 @@ export default function ApprovalsPage() {
     return examDates.length ? [{ record, requirement, exam: examDates[0] }] : [];
   }).sort((left, right) => left.exam.days - right.exam.days);
 
-  const goToPendingProject = (requirement: (typeof urgentPending)[number]['requirement']) => {
-    setClientFilter(requirement.clientName);
-    setExamFilter(requirement.examName);
+  const pendingProjects = [...urgentPending.reduce((groups, { requirement }) => {
+    const key = projectKey(requirement);
+    const group = groups.get(key) || { clientName: requirement.clientName, examName: requirement.examName, count: 0 };
+    group.count += 1;
+    groups.set(key, group);
+    return groups;
+  }, new Map<string, { clientName: string; examName: string; count: number }>()).values()]
+    .sort((left, right) => left.clientName.localeCompare(right.clientName) || left.examName.localeCompare(right.examName));
+
+  const goToPendingProject = (clientName: string, examName: string) => {
+    setClientFilter(clientName);
+    setExamFilter(examName);
     setZoneFilter('');
     setTcCodeFilter('');
     setSelectedIds([]);
@@ -522,30 +521,14 @@ export default function ApprovalsPage() {
 
       {queue.length > 0 && (
         <section className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4" aria-label="Pending quotation alerts">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <div>
-              <h2 className="font-semibold text-amber-950">Pending quotation alerts</h2>
-              <p className="text-sm text-amber-900">
-                {queue.length} quotation{queue.length === 1 ? '' : 's'} waiting for your approval.
-              </p>
-            </div>
-            <span className="rounded-full bg-amber-200 px-3 py-1 text-sm font-semibold text-amber-950">
-              {urgentPending.length} quotation{urgentPending.length === 1 ? '' : 's'} due within {alertDaysBeforeExam} days
-            </span>
-          </div>
-          {urgentPending.length > 0 ? (
+          <h2 className="font-semibold text-amber-950">Pending quotation alerts</h2>
+          {pendingProjects.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {urgentPending.map(({ record, requirement, exam }) => (
-                <button key={record.id} type="button" onClick={() => goToPendingProject(requirement)}
-                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
-                  <span className="block font-semibold">{requirement.clientName} · {requirement.examName}</span>
-                  <span className="block text-xs">
-                    TC {requirement.tcCode} · Exam {dateLabel(exam.date)} · {
-                      exam.days < 0 ? `Overdue by ${Math.abs(exam.days)} day${exam.days === -1 ? '' : 's'}`
-                        : exam.days === 0 ? 'Exam today'
-                          : `${exam.days} day${exam.days === 1 ? '' : 's'} remaining`
-                    } · View for approval
-                  </span>
+              {pendingProjects.map(project => (
+                <button key={`${project.clientName}-${project.examName}`} type="button"
+                  onClick={() => goToPendingProject(project.clientName, project.examName)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-semibold text-amber-950 hover:bg-amber-100">
+                  {project.clientName} · {project.examName} ({project.count} {project.count === 1 ? 'venue' : 'venues'})
                 </button>
               ))}
             </div>
@@ -632,7 +615,7 @@ export default function ApprovalsPage() {
                 )}
               </div>
 
-              <div aria-hidden="true" className="hidden rounded-t-xl bg-slate-800 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-white xl:grid xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)] xl:gap-2">
+              <div aria-hidden="true" className="hidden rounded-t-xl bg-slate-800 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-white xl:grid xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(128px,1.15fr)] xl:gap-2">
                 <span />
                 <span>Zone</span>
                 <span>State</span>
@@ -642,7 +625,6 @@ export default function ApprovalsPage() {
                 <span>Vendor</span>
                 <span>Installation cost</span>
                 <span>Per candidate</span>
-                <span>Approver remarks</span>
                 <span>Decision</span>
               </div>
 
@@ -650,22 +632,20 @@ export default function ApprovalsPage() {
                 const requirement = indexes.requirementsById.get(record.requirementId);
                 if (!requirement) return null;
                 const vendorName = indexes.vendorsById.get(record.vendorId)?.vendorName || 'Vendor unavailable';
-                const recordRevisionHistory = indexes.revisionsByRecord.get(record.id) || [];
-                const recordPreviousRevision = recordRevisionHistory.length > 1
-                  ? recordRevisionHistory[recordRevisionHistory.length - 2]
-                  : undefined;
                 const flags = getCostFlags(
                   record,
-                  recordPreviousRevision,
-                  indexes.candidatesByRecord.get(record.id) || 0,
-                  (indexes.projectRecords.get(projectKey(requirement)) || []).filter(item => item.id !== record.id)
+                  indexes.previousQuoteCostByRecord.get(record.id)
                 );
+                const approvalCardColumns = flags.length > 0
+                  ? 'xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)]'
+                  : 'xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(128px,1.15fr)]';
                 const candidates = indexes.candidatesByRecord.get(record.id) || 0;
                 const schedules = indexes.schedulesByRecord.get(record.id) || [];
                 const examDates = [...new Set(schedules
                   .map(schedule => normalizeExamDate(schedule.examDate) || schedule.examDate))]
                   .sort((left, right) => left.localeCompare(right));
                 const perCandidate = candidates > 0 ? record.localVendorCost / candidates : undefined;
+                const previousQuoteCost = indexes.previousQuoteCostByRecord.get(record.id);
                 const canApprove = (record.approvalStage || 'surveillance_head') === 'surveillance_head'
                   ? can('approve_surveillance')
                   : can('approve_enablement');
@@ -673,7 +653,7 @@ export default function ApprovalsPage() {
                 return (
                   <article key={record.id} data-approval-card
                     aria-label={`Approval details for TC Code ${requirement.tcCode}`}
-                    className={`grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition sm:grid-cols-3 xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)] xl:items-start xl:gap-2 xl:rounded-none xl:border-x-0 xl:border-t-0 xl:px-3 xl:py-3 ${
+                    className={`grid min-w-0 grid-cols-2 gap-x-3 gap-y-3 overflow-hidden rounded-xl border bg-white p-3 shadow-sm transition sm:grid-cols-3 ${approvalCardColumns} xl:items-start xl:gap-2 xl:rounded-none xl:border-x-0 xl:border-t-0 xl:px-3 xl:py-3 ${
                       isSelected ? 'border-blue-300 ring-2 ring-blue-100' : 'border-slate-200'
                     }`}>
                     <div className="col-span-2 flex items-center justify-between gap-2 border-b border-slate-100 pb-2 sm:col-span-3 xl:col-span-1 xl:justify-center xl:border-0 xl:pb-0">
@@ -726,8 +706,8 @@ export default function ApprovalsPage() {
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Installation cost</p>
                       <p className="mt-0.5 text-xs font-semibold tabular-nums text-slate-900 xl:mt-0">{money(record.localVendorCost)}</p>
-                      {recordPreviousRevision && (
-                        <p className="mt-1 text-[10px] leading-snug text-slate-500">Previous {money(recordPreviousRevision.localVendorCost)}</p>
+                      {previousQuoteCost !== undefined && (
+                        <p className="mt-1 text-[10px] leading-snug text-slate-500">Previous {money(previousQuoteCost)}</p>
                       )}
                       {record.remarks && (
                         <p className="mt-1 break-words text-[10px] leading-snug text-amber-900">
@@ -759,7 +739,7 @@ export default function ApprovalsPage() {
                         </span>
                       )}
                     </div>
-                    <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-1">
+                    {flags.length > 0 && <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-1">
                       <Textarea
                         label={`Approval remarks for TC Code ${requirement.tcCode}`}
                         value={remarksByRecord[record.id] || ''}
@@ -769,25 +749,21 @@ export default function ApprovalsPage() {
                         }))}
                         rows={2}
                         className="w-full min-w-0 max-w-full resize-y bg-white text-xs"
-                        placeholder={flags.length > 0
-                          ? 'Required: explain this cost alert before approving'
-                          : 'Optional note; required for send-back'}
+                        placeholder="Required: explain this quote's higher total cost before approving"
                       />
-                      {flags.length > 0 && (
-                        <label className="mt-2 flex items-start gap-2 text-[10px] leading-snug text-amber-900">
-                          <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
-                            onChange={event => setExceptionByRecord(previous => ({
-                              ...previous,
-                              [record.id]: event.target.checked,
-                            }))}
-                            className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
-                          Exception approval required for higher cost
-                        </label>
-                      )}
-                    </div>
+                      <label className="mt-2 flex items-start gap-2 text-[10px] leading-snug text-amber-900">
+                        <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
+                          onChange={event => setExceptionByRecord(previous => ({
+                            ...previous,
+                            [record.id]: event.target.checked,
+                          }))}
+                          className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                        Exception approval for higher total cost
+                      </label>
+                    </div>}
                     <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 sm:col-span-3 xl:col-span-1 xl:grid-cols-1 xl:border-0 xl:pt-0">
                       <Button variant="outline" size="sm" className="min-h-9 whitespace-normal px-2 text-[11px]" disabled={!canApprove}
-                        onClick={() => handleDecision(record, 'sent_back')}>
+                        onClick={() => { setSendBackRecordId(record.id); setSendBackRemarks(''); }}>
                         <CornerUpLeft size={13} /> Send back
                       </Button>
                       <Button size="sm" className="min-h-9 whitespace-normal px-2 text-[11px]" disabled={!canApprove}
@@ -1049,6 +1025,35 @@ export default function ApprovalsPage() {
       </Modal>
 
       <Modal
+        open={Boolean(sendBackRecordId)}
+        onClose={() => { setSendBackRecordId(''); setSendBackRemarks(''); }}
+        title="Send quotation back"
+      >
+        <div className="space-y-4">
+          <Textarea label="Reason for sending back" value={sendBackRemarks}
+            onChange={event => setSendBackRemarks(event.target.value)} rows={4} required />
+          <div className="flex justify-end gap-2">
+            <Button variant="secondary" onClick={() => { setSendBackRecordId(''); setSendBackRemarks(''); }}>
+              Cancel
+            </Button>
+            <Button onClick={() => {
+              const record = data.installations.find(item => item.id === sendBackRecordId);
+              if (!record) {
+                setAlert({ type: 'error', message: 'The selected quotation is no longer available.' });
+                setSendBackRecordId('');
+                return;
+              }
+              handleDecision(record, 'sent_back', sendBackRemarks);
+              setSendBackRecordId('');
+              setSendBackRemarks('');
+            }}>
+              Send back
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      <Modal
         open={Boolean(approvalDrilldown)}
         onClose={() => setApprovalDrilldown(null)}
         title={approvalDrilldown === 'approved'
@@ -1219,34 +1224,10 @@ export default function ApprovalsPage() {
   );
 }
 
-function getCostFlags(
-  record: InstallationRecord,
-  previous: QuoteRevision | undefined,
-  candidates: number,
-  peerValues: Array<{ id: string; cost: number; candidates: number; perCandidate: number }>
-) {
-  const increase = previous && previous.localVendorCost > 0
-    ? (record.localVendorCost - previous.localVendorCost) / previous.localVendorCost
-    : undefined;
-  const comparablePeers = peerValues.filter(peer => peer.candidates > 0);
-  const averagePerCandidate = comparablePeers.length > 0
-    ? comparablePeers.reduce((total, value) => total + value.perCandidate, 0) / comparablePeers.length
-    : 0;
-  const perCandidate = candidates > 0 ? record.localVendorCost / candidates : 0;
-  return [
-    ...(increase !== undefined && increase > 0.2
-      ? [`Current quote increased ${Math.round(increase * 100)}% compared with its previous quote (${money(previous!.localVendorCost)}).`]
-      : []),
-    ...(averagePerCandidate > 0 && perCandidate > averagePerCandidate * 1.25
-      ? [`Cost per candidate (${money(perCandidate)}) is more than 25% above the client/exam average (${money(averagePerCandidate)}).`]
-      : []),
-    ...(comparablePeers.length > 0 && record.localVendorCost > Math.max(...comparablePeers.map(value => value.cost))
-      ? [`Current total venue cost (${money(record.localVendorCost)}) is higher than all other venues for this client/exam.`]
-      : []),
-    ...(comparablePeers.length > 0 && perCandidate > Math.max(...comparablePeers.map(value => value.perCandidate))
-      ? [`Current cost per candidate (${money(perCandidate)}) is higher than all other venues for this client/exam.`]
-      : []),
-  ];
+function getCostFlags(record: InstallationRecord, previousQuoteCost?: number) {
+  return previousQuoteCost !== undefined && record.localVendorCost > previousQuoteCost
+    ? [`Current total quotation (${money(record.localVendorCost)}) exceeds the previous venue quotation (${money(previousQuoteCost)}).`]
+    : [];
 }
 
 function Summary({ label, value }: { label: string; value: string }) {

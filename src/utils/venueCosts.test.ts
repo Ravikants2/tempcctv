@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { InstallationRecord, QuoteRevision, RequirementMaster, VendorMaster } from '../types';
-import { getVenueCostHistory } from './venueCosts';
+import { getPreviousVenueQuote, getVenueCostHistory } from './venueCosts';
 
 const makeRequirement = (
   id: string,
@@ -109,5 +109,25 @@ describe('getVenueCostHistory', () => {
       [],
       revisions
     ).map(quote => quote.cost)).toEqual([7000, 6500, 5000]);
+  });
+
+  it('returns the quote immediately before the current revision for higher-cost checks', () => {
+    const requirement = makeRequirement('target', '1001', 'Exam');
+    const installation = makeInstallation('record', 'target', '2026-03-01T00:00:00.000Z', 7000);
+    const revisions: QuoteRevision[] = [5000, 6500, 7000].map((localVendorCost, index) => ({
+      id: `revision-${index}`,
+      installationRecordId: 'record',
+      createdAt: `2026-0${index + 1}-01T00:00:00.000Z`,
+      createdBy: 'user',
+      vendorId: 'vendor',
+      localVendorCost,
+      installationType: 'Full Vendor',
+      cameraCount: 1,
+      totalCandidates: 100,
+      examDates: [{ examDate: '2026-12-10', scheduledCandidates: 100 }],
+    }));
+    const history = getVenueCostHistory(requirement, [installation], [requirement], [], [], revisions);
+
+    expect(getPreviousVenueQuote(history, 'record', 'revision-2')?.cost).toBe(6500);
   });
 });

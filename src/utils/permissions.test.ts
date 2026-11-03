@@ -38,11 +38,17 @@ describe('built-in least-privilege policies', () => {
 
 describe('normalizeAppData', () => {
   it('defaults approval alert criteria to seven days and rejects invalid values', () => {
-    expect(normalizeAppData({}).approvalAlertCriteria).toEqual({ daysBeforeExam: 7 });
+    expect(normalizeAppData({}).approvalAlertCriteria).toEqual({
+      approvalDaysBeforeExam: 7,
+      quotationDaysBeforeExam: 7,
+    });
     expect(normalizeAppData({ approvalAlertCriteria: { daysBeforeExam: 0 } }).approvalAlertCriteria)
-      .toEqual({ daysBeforeExam: 7 });
+      .toEqual({ approvalDaysBeforeExam: 7, quotationDaysBeforeExam: 7 });
     expect(normalizeAppData({ approvalAlertCriteria: { daysBeforeExam: 10 } }).approvalAlertCriteria)
-      .toEqual({ daysBeforeExam: 10 });
+      .toEqual({ approvalDaysBeforeExam: 10, quotationDaysBeforeExam: 10 });
+    expect(normalizeAppData({
+      approvalAlertCriteria: { approvalDaysBeforeExam: 3, quotationDaysBeforeExam: 12 },
+    }).approvalAlertCriteria).toEqual({ approvalDaysBeforeExam: 3, quotationDaysBeforeExam: 12 });
   });
 
   it('routes legacy installations without approval metadata to first-stage review', () => {
