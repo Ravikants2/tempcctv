@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { Alert, Modal } from '../../components/ui/index';
+import { TablePagination } from '../../components/ui/TablePagination';
 import type {
   AppData,
   ExamDateDetail,
@@ -24,6 +25,8 @@ import { STORAGE_QUANTITIES, STORAGE_SIZE_OPTIONS } from '../../utils/storageOpt
 interface StorageFormRow extends StorageItem {
   id: string;
 }
+
+const QUOTE_HISTORY_PAGE_SIZE = 5;
 
 export default function InstallationFormPage() {
   const { id } = useParams<{ id?: string }>();
@@ -53,6 +56,7 @@ export default function InstallationFormPage() {
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [existingQuotationId, setExistingQuotationId] = useState<string | undefined>();
   const [showQuoteHistory, setShowQuoteHistory] = useState(false);
+  const [quoteHistoryPage, setQuoteHistoryPage] = useState(1);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'warning'; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -113,6 +117,11 @@ export default function InstallationFormPage() {
         data.quoteRevisions
       )
     : [];
+  const quoteHistoryPageCount = Math.max(1, Math.ceil(costHistory.length / QUOTE_HISTORY_PAGE_SIZE));
+  const quoteHistoryPageRows = costHistory.slice(
+    (quoteHistoryPage - 1) * QUOTE_HISTORY_PAGE_SIZE,
+    quoteHistoryPage * QUOTE_HISTORY_PAGE_SIZE
+  );
   const previousCost = costHistory[0];
   const lowestCost = costHistory.reduce<VenueCostHistoryEntry | undefined>(
     (lowest, quote) => !lowest || quote.cost < lowest.cost ? quote : lowest,
@@ -524,7 +533,7 @@ export default function InstallationFormPage() {
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-semibold text-slate-800">Previous quotes for this TC code or venue</h3>
-                <Button type="button" variant="outline" size="sm" onClick={() => setShowQuoteHistory(true)}>
+                <Button type="button" variant="outline" size="sm" onClick={() => { setQuoteHistoryPage(1); setShowQuoteHistory(true); }}>
                   View all {costHistory.length} quotes
                 </Button>
               </div>
@@ -665,7 +674,7 @@ export default function InstallationFormPage() {
       <Modal open={showQuoteHistory} onClose={() => setShowQuoteHistory(false)}
         title={`Past quote records · TC Code ${selectedReq?.tcCode || ''}`} size="2xl">
         <div className="space-y-3">
-          {costHistory.map(history => (
+          {quoteHistoryPageRows.map(history => (
             <article key={history.revisionId || history.record.id} className="rounded-lg border border-slate-200 p-3 text-sm">
               <div className="flex flex-wrap items-start justify-between gap-2">
                 <div>
@@ -684,6 +693,14 @@ export default function InstallationFormPage() {
               {history.remarks && <p className="mt-1 text-xs text-slate-700">Remarks: {history.remarks}</p>}
             </article>
           ))}
+          {costHistory.length > QUOTE_HISTORY_PAGE_SIZE && (
+            <TablePagination
+              page={Math.min(quoteHistoryPage, quoteHistoryPageCount)}
+              pageSize={QUOTE_HISTORY_PAGE_SIZE}
+              totalItems={costHistory.length}
+              onPageChange={setQuoteHistoryPage}
+            />
+          )}
         </div>
       </Modal>
     </div>

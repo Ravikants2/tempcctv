@@ -141,6 +141,10 @@ export interface BlanketApproval {
   createdAt: string;
 }
 
+export interface ApprovalAlertCriteria {
+  daysBeforeExam: number;
+}
+
 export interface ExamDateDetail {
   id: string;
   installationRecordId: string;
@@ -184,6 +188,7 @@ export interface AppData {
   accessRoles: AccessRole[];
   userGroups: UserGroup[];
   auditLogs: AuditLog[];
+  approvalAlertCriteria?: ApprovalAlertCriteria;
 }
 
 export interface DashboardFilters {

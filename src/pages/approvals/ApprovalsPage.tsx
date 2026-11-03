@@ -5,7 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { useAuth } from '../../context/AuthContext';
-import { formatExamDate, normalizeExamDate } from '../../utils/dates';
+import { daysUntilExam, formatExamDate, normalizeExamDate } from '../../utils/dates';
 import { exportApprovalsToExcel } from '../../utils/excel';
 import type { ApprovalEvent, ApprovalStage, ApprovalStatus, InstallationRecord, QuoteRevision } from '../../types';
 import { AlertCircle, ArrowLeft, Check, CheckCircle2, Clock3, CornerUpLeft, Download, History } from 'lucide-react';
@@ -439,6 +439,37 @@ export default function ApprovalsPage() {
     surveillance_head: waitingRecords.filter(record => (record.approvalStage || 'surveillance_head') === 'surveillance_head').length,
     enablement_head: waitingRecords.filter(record => record.approvalStage === 'enablement_head').length,
   };
+  const alertDaysBeforeExam = data.approvalAlertCriteria?.daysBeforeExam ?? 7;
+  const urgentPending = queue.flatMap(record => {
+    const requirement = indexes.requirementsById.get(record.requirementId);
+    if (!requirement) return [];
+    const revisions = indexes.revisionsByRecord.get(record.id) || [];
+    const latestRevisionDates = revisions[revisions.length - 1]?.examDates.map(item => item.examDate) || [];
+    const recordExamDates = indexes.schedulesByRecord.get(record.id)?.map(item => item.examDate) || [];
+    const scheduledDates = requirement.examDate
+      ? [requirement.examDate]
+      : recordExamDates.length > 0
+        ? recordExamDates
+        : latestRevisionDates;
+    const examDates = scheduledDates
+      .map(date => ({ date, days: daysUntilExam(date) }))
+      .filter((item): item is { date: string; days: number } =>
+        item.days !== null && item.days <= alertDaysBeforeExam
+      )
+      .sort((left, right) => left.days - right.days);
+    return examDates.length ? [{ record, requirement, exam: examDates[0] }] : [];
+  }).sort((left, right) => left.exam.days - right.exam.days);
+
+  const goToPendingProject = (requirement: (typeof urgentPending)[number]['requirement']) => {
+    setClientFilter(requirement.clientName);
+    setExamFilter(requirement.examName);
+    setZoneFilter('');
+    setTcCodeFilter('');
+    setSelectedIds([]);
+    setPage(1);
+    document.querySelector<HTMLElement>('[data-approval-queue]')
+      ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  };
 
   return (
     <div className="min-w-0 space-y-5">
@@ -488,6 +519,43 @@ export default function ApprovalsPage() {
       </section>
 
       {alert && <Alert type={alert.type} onClose={() => setAlert(null)}>{alert.message}</Alert>}
+
+      {queue.length > 0 && (
+        <section className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4" aria-label="Pending quotation alerts">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div>
+              <h2 className="font-semibold text-amber-950">Pending quotation alerts</h2>
+              <p className="text-sm text-amber-900">
+                {queue.length} quotation{queue.length === 1 ? '' : 's'} waiting for your approval.
+              </p>
+            </div>
+            <span className="rounded-full bg-amber-200 px-3 py-1 text-sm font-semibold text-amber-950">
+              {urgentPending.length} quotation{urgentPending.length === 1 ? '' : 's'} due within {alertDaysBeforeExam} days
+            </span>
+          </div>
+          {urgentPending.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {urgentPending.map(({ record, requirement, exam }) => (
+                <button key={record.id} type="button" onClick={() => goToPendingProject(requirement)}
+                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
+                  <span className="block font-semibold">{requirement.clientName} · {requirement.examName}</span>
+                  <span className="block text-xs">
+                    TC {requirement.tcCode} · Exam {dateLabel(exam.date)} · {
+                      exam.days < 0 ? `Overdue by ${Math.abs(exam.days)} day${exam.days === -1 ? '' : 's'}`
+                        : exam.days === 0 ? 'Exam today'
+                          : `${exam.days} day${exam.days === 1 ? '' : 's'} remaining`
+                    } · View for approval
+                  </span>
+                </button>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-amber-900">
+              No pending quotations have exams within {alertDaysBeforeExam} days.
+            </p>
+          )}
+        </section>
+      )}
 
       {queue.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
@@ -713,7 +781,7 @@ export default function ApprovalsPage() {
                               [record.id]: event.target.checked,
                             }))}
                             className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
-                          Exception approval required
+                          Exception approval required for higher cost
                         </label>
                       )}
                     </div>

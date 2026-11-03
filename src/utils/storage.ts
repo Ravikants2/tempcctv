@@ -26,6 +26,7 @@ export function getInitialData(): AppData {
     accessRoles: [],
     userGroups: [],
     auditLogs: [],
+    approvalAlertCriteria: { daysBeforeExam: 7 },
   };
 }
 
@@ -63,6 +64,12 @@ export function normalizeAppData(data: Partial<AppData>): AppData {
     accessRoles: Array.isArray(data.accessRoles) ? data.accessRoles : [],
     userGroups,
     auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
+    approvalAlertCriteria: data.approvalAlertCriteria &&
+      Number.isInteger(data.approvalAlertCriteria.daysBeforeExam) &&
+      data.approvalAlertCriteria.daysBeforeExam >= 1 &&
+      data.approvalAlertCriteria.daysBeforeExam <= 365
+      ? data.approvalAlertCriteria
+      : initial.approvalAlertCriteria,
   };
 }
 

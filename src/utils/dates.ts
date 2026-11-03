@@ -32,3 +32,12 @@ export function formatExamDate(value: string): string {
   const [year, month, day] = normalized.split('-');
   return `${day}/${month}/${year}`;
 }
+
+export function daysUntilExam(value: string, today = new Date()): number | null {
+  const normalized = normalizeExamDate(value);
+  if (!normalized) return null;
+  const [year, month, day] = normalized.split('-').map(Number);
+  const examDay = Date.UTC(year, month - 1, day);
+  const todayDay = Date.UTC(today.getFullYear(), today.getMonth(), today.getDate());
+  return Math.round((examDay - todayDay) / DAY_MS);
+}

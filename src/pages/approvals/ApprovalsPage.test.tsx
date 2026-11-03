@@ -113,6 +113,30 @@ describe('ApprovalsPage', () => {
     });
   });
 
+  it('shows urgent pending exam alerts that filter the approval queue by client and exam', () => {
+    const examDate = new Date();
+    examDate.setDate(examDate.getDate() + 3);
+    const formattedExamDate = [
+      examDate.getFullYear(),
+      String(examDate.getMonth() + 1).padStart(2, '0'),
+      String(examDate.getDate()).padStart(2, '0'),
+    ].join('-');
+    mockData = {
+      ...initialData,
+      requirements: [{ ...initialData.requirements[0], examDate: formattedExamDate }],
+    };
+    mockAuthData(mockData);
+
+    render(<ApprovalsPage />);
+
+    const alertLink = screen.getByRole('button', { name: /TC TC-100.*View for approval/ });
+    expect(alertLink).toHaveTextContent('3 days remaining');
+    fireEvent.click(alertLink);
+
+    expect(screen.getByRole('combobox', { name: 'Client Name' })).toHaveValue('Client');
+    expect(screen.getByRole('combobox', { name: 'Exam Name' })).toHaveValue('Exam');
+  });
+
   it('requires a reason when sending a quote back to the zone', () => {
     render(<ApprovalsPage />);
 

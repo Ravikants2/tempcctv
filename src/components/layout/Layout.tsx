@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FileText, Users, ClipboardList, TrendingUp,
   Wrench, LogOut, Menu, X, ChevronDown,
   Download, Upload, Github, Loader2, CheckCircle2, AlertCircle,
-  UserCog,
+  UserCog, BellRing,
 } from 'lucide-react';
 
 const navItems = [
@@ -22,6 +22,7 @@ const navItems = [
   { to: '/records',              label: 'Records',             icon: ClipboardList,   permission: 'page:records' },
   { to: '/approvals',            label: 'Approvals',           icon: CheckCircle2,    permission: 'page:approvals' },
   { to: '/users',                label: 'User Management',     icon: UserCog,         permission: 'manage_users' },
+  { to: '/approval-alert-criteria', label: 'Approval Alert Criteria', icon: BellRing, permission: 'manage_users' },
 ];
 
 export function Layout({ children }: { children: React.ReactNode }) {

@@ -16,6 +16,7 @@ import OperationsDashboard from './pages/dashboard/OperationsDashboard';
 import VendorDashboard from './pages/dashboard/VendorDashboard';
 import VenueDashboard from './pages/dashboard/VenueDashboard';
 import UserManagementPage from './pages/users/UserManagementPage';
+import ApprovalAlertCriteriaPage from './pages/users/ApprovalAlertCriteriaPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 
 function WorkspaceLoading() {
@@ -101,6 +102,7 @@ function AppRoutes() {
       <Route path="/records"              element={<ProtectedRoute zonalAllowed permission="page:records"><RecordsPage /></ProtectedRoute>} />
       <Route path="/approvals"            element={<ProtectedRoute approvalAllowed permission="page:approvals"><ApprovalsPage /></ProtectedRoute>} />
       <Route path="/users"                element={<ProtectedRoute permission="manage_users"><UserManagementPage /></ProtectedRoute>} />
+      <Route path="/approval-alert-criteria" element={<ProtectedRoute permission="manage_users"><ApprovalAlertCriteriaPage /></ProtectedRoute>} />
       <Route path="/installation/new"     element={<ProtectedRoute zonalAllowed permission="records:create"><InstallationFormPage /></ProtectedRoute>} />
       <Route path="/installation/edit/:id" element={<ProtectedRoute zonalAllowed permission="records:edit"><InstallationFormPage /></ProtectedRoute>} />
       <Route path="/installation/bulk"    element={<ProtectedRoute permission="records:bulk"><BulkUploadPage /></ProtectedRoute>} />
