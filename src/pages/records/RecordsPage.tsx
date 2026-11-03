@@ -141,6 +141,18 @@ export default function RecordsPage() {
     setPage(1);
   };
 
+  const showProjectPendingRecords = (clientName: string, examName: string) => {
+    setFilterClient(clientName);
+    setFilterExam(examName);
+    setFilterZone('');
+    setFilterState('');
+    setFilterCity('');
+    setFilterTcCode('');
+    setStartDate('');
+    setEndDate('');
+    showApprovalStatus('pending');
+  };
+
   const handleViewQuotation = (quotationFileId: string) => {
     const q = data.quotations.find(q => q.id === quotationFileId);
     if (!q) return;
@@ -208,12 +220,11 @@ export default function RecordsPage() {
           <div className="mt-2 flex flex-wrap gap-2">
             {pendingByProject.map(project => (
               <button key={`${project.clientName}-${project.examName}`} type="button"
-                onClick={() => can('page:approvals')
-                  ? navigate(`/approvals?client=${encodeURIComponent(project.clientName)}&exam=${encodeURIComponent(project.examName)}`)
-                  : (setFilterClient(project.clientName), setFilterExam(project.examName), showApprovalStatus('pending'))}
+                onClick={() => showProjectPendingRecords(project.clientName, project.examName)}
+                title="View these pending quotations in Records"
                 className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
                 <span className="font-medium">{project.clientName} · {project.examName}</span>
-                <span className="ml-2">{project.count} pending</span>
+                <span className="ml-2">{project.count} pending · View records</span>
               </button>
             ))}
           </div>
