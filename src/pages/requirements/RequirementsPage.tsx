@@ -22,10 +22,11 @@ interface PreviewRow extends Partial<RequirementMaster> {
 
 export default function RequirementsPage() {
   const { data, updateData, addAuditLog, can, currentUser } = useAuth();
+  const searchParams = new URLSearchParams(window.location.search);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [search, setSearch] = useState('');
-  const [filterClient, setFilterClient] = useState('');
-  const [filterExam, setFilterExam] = useState('');
+  const [filterClient, setFilterClient] = useState(searchParams.get('client') || '');
+  const [filterExam, setFilterExam] = useState(searchParams.get('exam') || '');
   const [filterZone, setFilterZone] = useState('');
   const [filterState, setFilterState] = useState('');
   const [filterCity, setFilterCity] = useState('');

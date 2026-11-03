@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Alert, Badge } from '../../components/ui/index';
 import { downloadInstallationTemplate, parseBulkInstallationFile, type BulkInstallationRow } from '../../utils/excel';
-import type { InstallationRecord } from '../../types';
+import type { InstallationRecord, QuoteRevision } from '../../types';
 import { Download, Upload, ArrowLeft } from 'lucide-react';
 import * as XLSX from 'xlsx';
 import { getVenueCostHistory, type VenueCostHistoryEntry } from '../../utils/venueCosts';
@@ -98,13 +98,23 @@ export default function BulkUploadPage() {
         }
 
         const previousCost = req
-          ? getVenueCostHistory(req, data.installations, scopedRequirements, data.vendors, data.examDates)[0]
+          ? getVenueCostHistory(
+              req,
+              data.installations,
+              scopedRequirements,
+              data.vendors,
+              data.examDates,
+              data.quoteRevisions
+            )[0]
           : undefined;
-        if (previousCost && row.localVendorCost > previousCost.record.localVendorCost &&
+        if (previousCost && row.localVendorCost > previousCost.cost &&
           row.remarks.trim().length < 10) {
           errors.push('Quote exceeds the previous total cost; enter a reason of at least 10 characters in Remarks');
         }
         const existing = req ? data.installations.find(i => i.requirementId === req.id) : undefined;
+        if (existing?.approvalStatus === 'approved') {
+          errors.push('This quotation is approved and locked; approved records cannot be changed');
+        }
         return {
           ...row,
           status: errors.length > 0 ? 'ERROR' : existing ? 'UPDATE' : 'NEW',
@@ -137,6 +147,7 @@ export default function BulkUploadPage() {
     updateData(prev => {
       let installations = [...prev.installations];
       let examDates = [...prev.examDates];
+      const quoteRevisions = [...prev.quoteRevisions];
 
       grouped.forEach((groupRows, reqId) => {
         const firstRow = groupRows[0];
@@ -170,9 +181,32 @@ export default function BulkUploadPage() {
           createdAt: existing?.createdAt || now,
           updatedBy: currentUser!.id,
           updatedAt: now,
+          approvalStatus: 'pending',
+          approvalStage: existing?.approvalStage || 'surveillance_head',
         };
 
         if (existing) {
+          if (!quoteRevisions.some(revision => revision.installationRecordId === recordId)) {
+            const previousDates = examDates
+              .filter(date => date.installationRecordId === recordId)
+              .map(date => ({ examDate: date.examDate, scheduledCandidates: date.scheduledCandidates }));
+            const legacyRevision: QuoteRevision = {
+              id: uuidv4(),
+              installationRecordId: recordId,
+              createdAt: existing.updatedAt,
+              createdBy: existing.updatedBy,
+              remarks: existing.remarks,
+              vendorId: existing.vendorId,
+              localVendorCost: existing.localVendorCost,
+              minimumCost: existing.minimumCost,
+              quotationFileId: existing.quotationFileId,
+              installationType: existing.installationType,
+              cameraCount: existing.cameraCount,
+              totalCandidates: previousDates.reduce((total, date) => total + date.scheduledCandidates, 0),
+              examDates: previousDates,
+            };
+            quoteRevisions.push(legacyRevision);
+          }
           installations = installations.map(i => i.id === recordId ? record : i);
         } else {
           installations.push(record);
@@ -193,10 +227,28 @@ export default function BulkUploadPage() {
         });
 
         examDates = [...otherDates, ...mergedDates];
+        quoteRevisions.push({
+          id: uuidv4(),
+          installationRecordId: recordId,
+          createdAt: now,
+          createdBy: currentUser!.id,
+          remarks: record.remarks,
+          vendorId: record.vendorId,
+          localVendorCost: record.localVendorCost,
+          minimumCost: record.minimumCost,
+          quotationFileId: record.quotationFileId,
+          installationType: record.installationType,
+          cameraCount: record.cameraCount,
+          totalCandidates: mergedDates.reduce((total, date) => total + date.scheduledCandidates, 0),
+          examDates: mergedDates.map(date => ({
+            examDate: date.examDate,
+            scheduledCandidates: date.scheduledCandidates,
+          })),
+        });
         addAuditLog(existing ? 'UPDATE' : 'CREATE', 'InstallationRecord', recordId, existing, record);
       });
 
-      return { ...prev, installations, examDates };
+      return { ...prev, installations, examDates, quoteRevisions };
     });
 
     addAuditLog('IMPORT', 'BulkInstallation', 'bulk', undefined, { count: valid.length });
@@ -275,13 +327,23 @@ export default function BulkUploadPage() {
                     <td className="px-2 py-1">{formatExamDate(r.examDate)}</td>
                     <td className="px-2 py-1">{r.scheduledCandidates}</td>
                     <td className="px-2 py-1">{r.vendorName}</td>
-                    <td className="px-2 py-1">₹{r.localVendorCost}</td>
+                    <td className="px-2 py-1">
+                      ₹{r.localVendorCost.toLocaleString('en-IN')}
+                      {r.previousCost && r.localVendorCost > r.previousCost.cost && (
+                        <p className="text-[10px] font-medium text-amber-800">
+                          +₹{(r.localVendorCost - r.previousCost.cost).toLocaleString('en-IN')}
+                          {' '}({r.previousCost.cost > 0
+                            ? `${((r.localVendorCost - r.previousCost.cost) / r.previousCost.cost * 100).toLocaleString('en-IN', { maximumFractionDigits: 1 })}%`
+                            : 'no baseline'})
+                        </p>
+                      )}
+                    </td>
                     <td className="px-2 py-1">
                       {r.previousCost ? (
                         <div>
-                          <p className="font-medium">₹{r.previousCost.record.localVendorCost.toLocaleString('en-IN')} · {r.previousCost.requirement.clientName} · {r.previousCost.requirement.examName}</p>
+                          <p className="font-medium">₹{r.previousCost.cost.toLocaleString('en-IN')} · {r.previousCost.requirement.clientName} · {r.previousCost.requirement.examName}</p>
                           <p>TC {r.previousCost.requirement.tcCode} - {r.previousCost.requirement.tcName} · {r.previousCost.requirement.zone}, {r.previousCost.requirement.state}, {r.previousCost.requirement.city}</p>
-                          <p>{r.previousCost.examDates.length ? r.previousCost.examDates.map(formatExamDate).join(', ') : 'Dates unavailable'} · {r.previousCost.totalCandidates.toLocaleString('en-IN')} candidates · Per candidate: {r.previousCost.totalCandidates > 0 ? `₹${(r.previousCost.record.localVendorCost / r.previousCost.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · {r.previousCost.vendorName}</p>
+                          <p>{r.previousCost.examDates.length ? r.previousCost.examDates.map(formatExamDate).join(', ') : 'Dates unavailable'} · {r.previousCost.totalCandidates.toLocaleString('en-IN')} candidates · Per candidate: {r.previousCost.totalCandidates > 0 ? `₹${(r.previousCost.cost / r.previousCost.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · {r.previousCost.vendorName}</p>
                         </div>
                       ) : 'No previous quote'}
                     </td>

@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/FormFields';
+import { KPICard } from '../../components/ui/index';
 import { downloadInstallationTemplate, exportRecordsToExcel } from '../../utils/excel';
 import { printRecordsPDF } from '../../utils/pdf';
 import { getInstallationStats } from '../../utils/calculations';
@@ -25,6 +26,7 @@ export default function RecordsPage() {
   const [filterState, setFilterState] = useState('');
   const [filterCity, setFilterCity] = useState('');
   const [filterTcCode, setFilterTcCode] = useState('');
+  const [approvalFilter, setApprovalFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
   const [page, setPage] = useState(1);
 
   const scopedRequirements = data.requirements.filter(r => currentUser?.role !== 'zonal_user' || r.zone === currentUser.zone);
@@ -40,7 +42,7 @@ export default function RecordsPage() {
   const cities = [...new Set(scopedRequirements
     .filter(r => (!filterZone || r.zone === filterZone) && (!filterState || r.state === filterState))
     .map(r => r.city))].sort();
-  const filtered = scopedInstallations.filter(inst => {
+  const filteredWithoutApproval = scopedInstallations.filter(inst => {
     const req = scopedRequirements.find(r => r.id === inst.requirementId);
     if (!req) return false;
     if (filterClient && req.clientName !== filterClient) return false;
@@ -58,6 +60,12 @@ export default function RecordsPage() {
     }
     return true;
   });
+  const filtered = filteredWithoutApproval.filter(installation =>
+    approvalFilter === 'all' ||
+    (approvalFilter === 'pending'
+      ? (installation.approvalStatus || 'pending') === 'pending'
+      : installation.approvalStatus === approvalFilter)
+  );
   const pageCount = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
   const currentPage = Math.min(page, pageCount);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
@@ -84,6 +92,32 @@ export default function RecordsPage() {
     }
     return true;
   });
+  const matchedRequirementIds = new Set(templateRequirements.map(requirement => requirement.id));
+  const matchedRequirementCount = new Set(templateRequirements.map(requirement =>
+    [requirement.clientName, requirement.examName, requirement.tcCode]
+      .map(value => value.trim().toLocaleLowerCase()).join('\u0000')
+  )).size;
+  const baseInstallationRows = scopedInstallations.filter(installation =>
+    matchedRequirementIds.has(installation.requirementId) &&
+    filteredWithoutApproval.some(item => item.id === installation.id)
+  );
+  const pendingCount = baseInstallationRows.filter(installation =>
+    (installation.approvalStatus || 'pending') === 'pending'
+  ).length;
+  const approvedCount = baseInstallationRows.filter(installation => installation.approvalStatus === 'approved').length;
+  const returnedCount = baseInstallationRows.filter(installation => installation.approvalStatus === 'returned').length;
+  const pendingByProject = [...baseInstallationRows
+    .filter(installation => (installation.approvalStatus || 'pending') === 'pending')
+    .reduce((groups, installation) => {
+      const requirement = scopedRequirements.find(item => item.id === installation.requirementId);
+      if (!requirement) return groups;
+      const key = `${requirement.clientName}\u0000${requirement.examName}`;
+      const group = groups.get(key) || { clientName: requirement.clientName, examName: requirement.examName, count: 0 };
+      group.count += 1;
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, { clientName: string; examName: string; count: number }>()).values()]
+    .sort((left, right) => left.clientName.localeCompare(right.clientName) || left.examName.localeCompare(right.examName));
   const templateVendors = data.vendors.filter(vendor =>
     currentUser?.role !== 'zonal_user' ||
     scopedRequirements.some(requirement => requirement.zone === vendor.zone)
@@ -101,6 +135,11 @@ export default function RecordsPage() {
     if (endDate && examDate > endDate) return [];
     return [{ requirementId, examDate, scheduledCandidates: date.scheduledCandidates }];
   });
+
+  const showApprovalStatus = (status: 'all' | 'pending' | 'approved' | 'returned') => {
+    setApprovalFilter(status);
+    setPage(1);
+  };
 
   const handleViewQuotation = (quotationFileId: string) => {
     const q = data.quotations.find(q => q.id === quotationFileId);
@@ -148,6 +187,39 @@ export default function RecordsPage() {
         </div>
       </div>
 
+      <div className="mb-5 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <KPICard title="Requirements" value={matchedRequirementCount}
+          subtitle="Click to view matching requirements" color="purple"
+          onClick={() => navigate(`/requirements?client=${encodeURIComponent(filterClient)}&exam=${encodeURIComponent(filterExam)}`)} />
+        <KPICard title="Quotations provided" value={baseInstallationRows.length}
+          subtitle="All statuses" color="blue" onClick={() => showApprovalStatus('all')} />
+        <KPICard title="Pending approval" value={pendingCount}
+          subtitle="Click to review pending quotations" color="orange"
+          onClick={() => showApprovalStatus('pending')} />
+        <KPICard title="Approved" value={approvedCount}
+          subtitle="Locked after approval" color="green" onClick={() => showApprovalStatus('approved')} />
+        <KPICard title="Sent back" value={returnedCount}
+          subtitle="Changes requested" color="red" onClick={() => showApprovalStatus('returned')} />
+      </div>
+
+      {pendingByProject.length > 0 && (
+        <section className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label="Quotations pending approval by client and exam">
+          <h2 className="font-semibold text-amber-950">Quotations waiting for approval</h2>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {pendingByProject.map(project => (
+              <button key={`${project.clientName}-${project.examName}`} type="button"
+                onClick={() => can('page:approvals')
+                  ? navigate(`/approvals?client=${encodeURIComponent(project.clientName)}&exam=${encodeURIComponent(project.examName)}`)
+                  : (setFilterClient(project.clientName), setFilterExam(project.examName), showApprovalStatus('pending'))}
+                className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
+                <span className="font-medium">{project.clientName} · {project.examName}</span>
+                <span className="ml-2">{project.count} pending</span>
+              </button>
+            ))}
+          </div>
+        </section>
+      )}
+
       {/* Filters */}
       <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
@@ -164,6 +236,14 @@ export default function RecordsPage() {
           options={clients.map(c => ({ value: c, label: c }))} placeholder="All Clients" className="w-44" />
         <Select label="Exam" value={filterExam} onChange={e => { setFilterExam(e.target.value); setPage(1); }}
           options={exams.map(e => ({ value: e, label: e }))} placeholder="All Exams" className="w-44" />
+        <Select label="Approval status" value={approvalFilter}
+          onChange={e => showApprovalStatus(e.target.value as typeof approvalFilter)}
+          options={[
+            { value: 'all', label: 'All statuses' },
+            { value: 'pending', label: 'Pending approval' },
+            { value: 'approved', label: 'Approved' },
+            { value: 'returned', label: 'Sent back' },
+          ]} className="w-44" />
         <Select label="Zone" value={filterZone} onChange={e => { setFilterZone(e.target.value); setFilterState(''); setFilterCity(''); setPage(1); }}
           options={zones.map(z => ({ value: z, label: z }))} placeholder="All zones" className="w-36" />
         <Select label="State" value={filterState} onChange={e => { setFilterState(e.target.value); setFilterCity(''); setPage(1); }}
@@ -173,8 +253,8 @@ export default function RecordsPage() {
         <Input label="TC Code" value={filterTcCode}
           onChange={e => { setFilterTcCode(e.target.value.replace(/\D/g, '')); setPage(1); }}
           inputMode="numeric" pattern="[0-9]*" placeholder="Numbers only" className="w-40" />
-        {(filterClient || filterExam || filterZone || filterState || filterCity || filterTcCode || startDate || endDate) && (
-          <Button variant="ghost" size="sm" className="mb-0.5" onClick={() => { setFilterClient(''); setFilterExam(''); setFilterZone(''); setFilterState(''); setFilterCity(''); setFilterTcCode(''); setStartDate(''); setEndDate(''); setPage(1); }}>Clear filters</Button>
+        {(filterClient || filterExam || filterZone || filterState || filterCity || filterTcCode || startDate || endDate || approvalFilter !== 'all') && (
+          <Button variant="ghost" size="sm" className="mb-0.5" onClick={() => { setFilterClient(''); setFilterExam(''); setFilterZone(''); setFilterState(''); setFilterCity(''); setFilterTcCode(''); setStartDate(''); setEndDate(''); showApprovalStatus('all'); }}>Clear filters</Button>
         )}
         </div>
       </div>
@@ -224,7 +304,7 @@ export default function RecordsPage() {
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">
-                      {can('edit_installation') &&
+                      {inst.approvalStatus !== 'approved' && can('edit_installation') &&
                         ((currentUser?.role !== 'zonal_user' && currentUser?.role !== 'custom') || inst.approvalStatus === 'returned') && (
                         <Button variant="ghost" size="sm" onClick={() => navigate(`/installation/edit/${inst.id}`)}>
                           <Pencil size={12} />

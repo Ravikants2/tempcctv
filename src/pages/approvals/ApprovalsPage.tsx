@@ -40,8 +40,9 @@ function projectKey(requirement: { clientName: string; examName: string }) {
 
 export default function ApprovalsPage() {
   const { data, updateData, addAuditLog, currentUser, can } = useAuth();
-  const [clientFilter, setClientFilter] = useState('');
-  const [examFilter, setExamFilter] = useState('');
+  const searchParams = new URLSearchParams(window.location.search);
+  const [clientFilter, setClientFilter] = useState(searchParams.get('client') || '');
+  const [examFilter, setExamFilter] = useState(searchParams.get('exam') || '');
   const [zoneFilter, setZoneFilter] = useState('');
   const [tcCodeFilter, setTcCodeFilter] = useState('');
   const [page, setPage] = useState(1);

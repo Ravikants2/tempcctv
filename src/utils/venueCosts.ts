@@ -1,12 +1,16 @@
-import type { ExamDateDetail, InstallationRecord, RequirementMaster, VendorMaster } from '../types';
+import type { ExamDateDetail, InstallationRecord, QuoteRevision, RequirementMaster, VendorMaster } from '../types';
 import { getRequirementExamSchedule } from './calculations';
 
 export interface VenueCostHistoryEntry {
   record: InstallationRecord;
+  revisionId?: string;
+  cost: number;
+  quotedAt: string;
   requirement: RequirementMaster;
   vendorName: string;
   examDates: string[];
   totalCandidates: number;
+  remarks?: string;
 }
 
 function normalized(value: string): string {
@@ -24,34 +28,51 @@ export function getVenueCostHistory(
   requirements: RequirementMaster[],
   vendors: VendorMaster[],
   examDates: ExamDateDetail[],
-  excludeRecordId?: string
+  quoteRevisions: QuoteRevision[] = []
 ): VenueCostHistoryEntry[] {
   const code = requirement.tcCode.replace(/\D/g, '');
   const venueKey = physicalVenueKey(requirement);
 
   return installations.flatMap(record => {
-    if (record.id === excludeRecordId) return [];
     const previousRequirement = requirements.find(item => item.id === record.requirementId);
     if (!previousRequirement) return [];
     const sameCode = Boolean(code) && previousRequirement.tcCode.replace(/\D/g, '') === code;
     const sameVenue = Boolean(venueKey) && physicalVenueKey(previousRequirement) === venueKey;
     if (!sameCode && !sameVenue) return [];
 
-    const schedule = getRequirementExamSchedule(
-      previousRequirement.id,
-      requirements,
-      installations,
-      examDates
-    );
+    const revisions = quoteRevisions
+      .filter(revision => revision.installationRecordId === record.id)
+      .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
+    const vendorName = (vendorId: string) =>
+      vendors.find(vendor => vendor.id === vendorId)?.vendorName || 'Vendor unavailable';
+
+    if (revisions.length > 0) {
+      return revisions.map((revision: QuoteRevision) => ({
+        record,
+        revisionId: revision.id,
+        cost: revision.localVendorCost,
+        quotedAt: revision.createdAt,
+        requirement: previousRequirement,
+        vendorName: vendorName(revision.vendorId),
+        examDates: revision.examDates.map(date => date.examDate),
+        totalCandidates: revision.totalCandidates,
+        remarks: revision.remarks,
+      }));
+    }
+
+    const schedule = getRequirementExamSchedule(previousRequirement.id, requirements, installations, examDates);
     return [{
       record,
+      cost: record.localVendorCost,
+      quotedAt: record.updatedAt,
       requirement: previousRequirement,
-      vendorName: vendors.find(vendor => vendor.id === record.vendorId)?.vendorName || 'Vendor unavailable',
+      vendorName: vendorName(record.vendorId),
       examDates: schedule.map(item => item.examDate),
       totalCandidates: schedule.reduce((total, item) => total + item.scheduledCandidates, 0),
+      remarks: record.remarks,
     }];
   }).sort((left, right) =>
-    right.record.updatedAt.localeCompare(left.record.updatedAt) ||
+    right.quotedAt.localeCompare(left.quotedAt) ||
     right.record.createdAt.localeCompare(left.record.createdAt)
   );
 }

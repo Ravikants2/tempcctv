@@ -4,7 +4,7 @@ import { v4 as uuidv4 } from 'uuid';
 import { useAuth } from '../../context/AuthContext';
 import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
-import { Alert } from '../../components/ui/index';
+import { Alert, Modal } from '../../components/ui/index';
 import type {
   AppData,
   ExamDateDetail,
@@ -18,7 +18,7 @@ import { Plus, Trash2, FileText, Eye } from 'lucide-react';
 import { normalizeExamDate } from '../../utils/dates';
 import { sameZone } from '../../utils/vendorCode';
 import { getRequirementExamSchedule } from '../../utils/calculations';
-import { getVenueCostHistory } from '../../utils/venueCosts';
+import { getVenueCostHistory, type VenueCostHistoryEntry } from '../../utils/venueCosts';
 import { STORAGE_QUANTITIES, STORAGE_SIZE_OPTIONS } from '../../utils/storageOptions';
 
 interface StorageFormRow extends StorageItem {
@@ -52,6 +52,7 @@ export default function InstallationFormPage() {
   const [remarks, setRemarks] = useState('');
   const [quotationFile, setQuotationFile] = useState<File | null>(null);
   const [existingQuotationId, setExistingQuotationId] = useState<string | undefined>();
+  const [showQuoteHistory, setShowQuoteHistory] = useState(false);
   const [alert, setAlert] = useState<{ type: 'success' | 'error' | 'warning'; msg: string } | null>(null);
   const [saving, setSaving] = useState(false);
 
@@ -108,15 +109,30 @@ export default function InstallationFormPage() {
         data.installations,
         scopedRequirements,
         data.vendors,
-        data.examDates
+        data.examDates,
+        data.quoteRevisions
       )
     : [];
   const previousCost = costHistory[0];
+  const lowestCost = costHistory.reduce<VenueCostHistoryEntry | undefined>(
+    (lowest, quote) => !lowest || quote.cost < lowest.cost ? quote : lowest,
+    undefined
+  );
+  const displayedHistory = [
+    ...costHistory.slice(0, 2),
+    ...(lowestCost && !costHistory.slice(0, 2).some(quote =>
+      quote.revisionId ? quote.revisionId === lowestCost.revisionId : quote.record.id === lowestCost.record.id
+    ) ? [lowestCost] : []),
+  ];
+  const costIncrease = previousCost && localVendorCost !== ''
+    ? Number(localVendorCost) - previousCost.cost
+    : 0;
   const costIncreaseRequiresRemarks = Boolean(
-    previousCost && localVendorCost !== '' && Number(localVendorCost) > previousCost.record.localVendorCost
+    previousCost && costIncrease > 0
   );
   const canEditRecord = !existingRecord ||
     (
+      existingRecord.approvalStatus !== 'approved' &&
       ((currentUser?.role !== 'zonal_user' && currentUser?.role !== 'custom') ||
         existingRecord.approvalStatus === 'returned') &&
       (currentUser?.role !== 'zonal_user' ||
@@ -157,7 +173,6 @@ export default function InstallationFormPage() {
   };
 
   const addStorageItem = () => {
-    if (storageItems.length >= 2) return;
     setStorageProvided(true);
     setStorageItems(previous => [...previous, {
       id: uuidv4(),
@@ -207,6 +222,10 @@ export default function InstallationFormPage() {
     e.preventDefault();
     if (!tcCodeInput || !selectedReqId) {
       setAlert({ type: 'error', msg: 'Select a TC code from the matching Requirements list before submitting.' });
+      return;
+    }
+    if (existingRecord?.approvalStatus === 'approved') {
+      setAlert({ type: 'error', msg: 'Approved quotations are locked and cannot be changed.' });
       return;
     }
     if (!scopedRequirements.some(requirement => requirement.id === selectedReqId)) {
@@ -383,7 +402,11 @@ export default function InstallationFormPage() {
 
       {!canEditRecord && (
         <div className="rounded-xl border border-amber-200 bg-amber-50 p-5">
-          <Alert type="error">This record is outside your assigned zone or has not been sent back for changes.</Alert>
+          <Alert type="error">
+            {existingRecord?.approvalStatus === 'approved'
+              ? 'This quotation has been approved and is locked. No user, including a Super Admin, can change it.'
+              : 'This record is outside your assigned zone or has not been sent back for changes.'}
+          </Alert>
           <Button className="mt-3" variant="secondary" onClick={() => navigate('/records')}>Back to Records</Button>
         </div>
       )}
@@ -486,7 +509,7 @@ export default function InstallationFormPage() {
               value={localVendorCost} onChange={e => {
                 const nextCost = e.target.value === '' ? '' : Number(e.target.value);
                 setLocalVendorCost(nextCost);
-                if (previousCost && nextCost !== '' && nextCost > previousCost.record.localVendorCost) setRemarks('');
+                if (previousCost && nextCost !== '' && nextCost > previousCost.cost) setRemarks('');
               }} required />
             <Input label="Minimum Cost (₹, optional)" type="number" min={0} step="0.01"
               value={minimumCost} onChange={e => setMinimumCost(e.target.value === '' ? '' : Number(e.target.value))} />
@@ -499,19 +522,26 @@ export default function InstallationFormPage() {
           </div>
           {costHistory.length > 0 && (
             <div className="mt-4 rounded-lg border border-slate-200 bg-slate-50 p-4">
-              <h3 className="mb-2 text-sm font-semibold text-slate-800">Previous quotes for this TC code or venue</h3>
+              <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                <h3 className="text-sm font-semibold text-slate-800">Previous quotes for this TC code or venue</h3>
+                <Button type="button" variant="outline" size="sm" onClick={() => setShowQuoteHistory(true)}>
+                  View all {costHistory.length} quotes
+                </Button>
+              </div>
               <div className="space-y-2">
-                {costHistory.map(history => (
-                  <div key={history.record.id} className="border-t border-slate-200 pt-2 text-xs text-slate-700 first:border-0 first:pt-0">
+                {displayedHistory.map((history, index) => (
+                  <div key={history.revisionId || history.record.id} className="border-t border-slate-200 pt-2 text-xs text-slate-700 first:border-0 first:pt-0">
+                    <p className="font-semibold text-slate-600">{index < 2 ? `Recent quote ${index + 1}` : 'Lowest quote'}</p>
                     <p className="font-medium">
-                      ₹{history.record.localVendorCost.toLocaleString('en-IN')} · {history.requirement.clientName} · {history.requirement.examName}
+                      ₹{history.cost.toLocaleString('en-IN')} · {history.requirement.clientName} · {history.requirement.examName}
                     </p>
                     <p>
                       TC {history.requirement.tcCode} - {history.requirement.tcName} · {history.requirement.zone}, {history.requirement.state}, {history.requirement.city}
                     </p>
                     <p>
-                      Exam dates: {history.examDates.length ? history.examDates.join(', ') : 'Not recorded'} · Candidates: {history.totalCandidates.toLocaleString('en-IN')} · Per candidate: {history.totalCandidates > 0 ? `₹${(history.record.localVendorCost / history.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · Vendor: {history.vendorName} · Updated: {new Date(history.record.updatedAt).toLocaleDateString('en-IN')}
+                      Exam dates: {history.examDates.length ? history.examDates.join(', ') : 'Not recorded'} · Candidates: {history.totalCandidates.toLocaleString('en-IN')} · Per candidate: {history.totalCandidates > 0 ? `₹${(history.cost / history.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · Vendor: {history.vendorName} · Updated: {new Date(history.quotedAt).toLocaleDateString('en-IN')}
                     </p>
+                    {history.remarks && <p>Remarks: {history.remarks}</p>}
                   </div>
                 ))}
               </div>
@@ -519,9 +549,18 @@ export default function InstallationFormPage() {
           )}
           {costIncreaseRequiresRemarks && previousCost && (
             <div className="mt-4 rounded-lg border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900" role="alert">
-              This quote is higher than the latest previous total quote of ₹{previousCost.record.localVendorCost.toLocaleString('en-IN')}.
+              Cost increased by ₹{costIncrease.toLocaleString('en-IN', { maximumFractionDigits: 2 })}
+              ({previousCost.cost > 0
+                ? `${(costIncrease / previousCost.cost * 100).toLocaleString('en-IN', { maximumFractionDigits: 1 })}%`
+                : 'no baseline'})
+              compared with the previous quote of ₹{previousCost.cost.toLocaleString('en-IN')}.
               Enter a clear reason of at least 10 characters in Remarks. Approvers will see it with this quote.
             </div>
+          )}
+          {previousCost && costIncrease < 0 && (
+            <p className="mt-3 text-sm text-emerald-700">
+              Cost decreased by ₹{Math.abs(costIncrease).toLocaleString('en-IN', { maximumFractionDigits: 2 })} compared with the previous quote.
+            </p>
           )}
           <div className="mt-4 flex flex-wrap gap-6">
             {[['proxyProvided', 'Proxy System Provided', proxyProvided, setProxyProvided],
@@ -539,7 +578,7 @@ export default function InstallationFormPage() {
         <section className="bg-white border rounded-xl p-5 shadow-sm">
           <div className="mb-4 flex items-center justify-between gap-3">
             <h2 className="font-semibold text-gray-800">External Storage</h2>
-            {storageProvided && storageItems.length < 2 && (
+            {storageProvided && (
               <Button type="button" size="sm" variant="outline" onClick={addStorageItem}>
                 <Plus size={14} /> Add Storage
               </Button>
@@ -575,9 +614,6 @@ export default function InstallationFormPage() {
                 aria-label={`Remove storage ${index + 1}`}><Trash2 size={14} /></Button>
             </div>
           ))}
-          {storageProvided && storageItems.length < 2 && (
-            <p className="text-xs text-slate-500">Up to two storage types can be added.</p>
-          )}
         </section>
 
         {/* Supporting Info */}
@@ -626,6 +662,30 @@ export default function InstallationFormPage() {
         </div>
       </form>
       </>}
+      <Modal open={showQuoteHistory} onClose={() => setShowQuoteHistory(false)}
+        title={`Past quote records · TC Code ${selectedReq?.tcCode || ''}`} size="2xl">
+        <div className="space-y-3">
+          {costHistory.map(history => (
+            <article key={history.revisionId || history.record.id} className="rounded-lg border border-slate-200 p-3 text-sm">
+              <div className="flex flex-wrap items-start justify-between gap-2">
+                <div>
+                  <h3 className="font-semibold text-slate-900">
+                    ₹{history.cost.toLocaleString('en-IN')} · {history.requirement.clientName} · {history.requirement.examName}
+                  </h3>
+                  <p className="text-xs text-slate-600">
+                    TC {history.requirement.tcCode} - {history.requirement.tcName} · {history.requirement.zone}, {history.requirement.state}, {history.requirement.city}
+                  </p>
+                </div>
+                <span className="text-xs text-slate-500">{new Date(history.quotedAt).toLocaleString('en-IN')}</span>
+              </div>
+              <p className="mt-1 text-xs text-slate-700">
+                Exam dates: {history.examDates.length ? history.examDates.join(', ') : 'Not recorded'} · Candidates: {history.totalCandidates.toLocaleString('en-IN')} · Per candidate: {history.totalCandidates > 0 ? `₹${(history.cost / history.totalCandidates).toLocaleString('en-IN', { maximumFractionDigits: 2 })}` : '—'} · Vendor: {history.vendorName}
+              </p>
+              {history.remarks && <p className="mt-1 text-xs text-slate-700">Remarks: {history.remarks}</p>}
+            </article>
+          ))}
+        </div>
+      </Modal>
     </div>
   );
 }
