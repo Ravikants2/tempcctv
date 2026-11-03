@@ -113,7 +113,7 @@ describe('ApprovalsPage', () => {
     });
   });
 
-  it('shows urgent pending exam alerts that filter the approval queue by client and exam', () => {
+  it('groups urgent pending alerts by exam date before client and exam', () => {
     const examDate = new Date();
     examDate.setDate(examDate.getDate() + 3);
     const formattedExamDate = [
@@ -129,11 +129,44 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    const alertLink = screen.getByRole('button', { name: 'Client · Exam (1 venue)' });
-    fireEvent.click(alertLink);
+    fireEvent.click(screen.getByRole('button', {
+      name: `Pending quotations on ${formattedExamDate}, 1 venue`,
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Client · Exam (1 venue)' }));
 
     expect(screen.getByRole('combobox', { name: 'Client Name' })).toHaveValue('Client');
     expect(screen.getByRole('combobox', { name: 'Exam Name' })).toHaveValue('Exam');
+    expect(screen.getByRole('button', { name: 'Approve all eligible (1)' })).toBeInTheDocument();
+  });
+
+  it('bulk approves eligible venues and opens a drillable approval summary', () => {
+    mockData = {
+      ...initialData,
+      installations: [{ ...initialData.installations[0], localVendorCost: 10000 }],
+      quoteRevisions: initialData.quoteRevisions.map(revision => ({
+        ...revision,
+        localVendorCost: 10000,
+      })),
+    };
+    mockAuthData(mockData);
+
+    render(<ApprovalsPage />);
+
+    fireEvent.click(screen.getByRole('button', {
+      name: 'Pending quotations on 2026-02-01, 1 venue',
+    }));
+    fireEvent.click(screen.getByRole('button', { name: 'Client · Exam (1 venue)' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Approve all eligible (1)' }));
+
+    expect(screen.getByRole('dialog')).toHaveTextContent('Bulk approval summary');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Client · Exam · 01 Feb 2026');
+    expect(screen.getByRole('button', { name: /Total approved quote cost ₹10,000/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Scheduled candidates 500/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /Venues approved 1/ })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Venues approved 1/ }));
+    fireEvent.click(screen.getByRole('button', { name: /Venue history/ }));
+    expect(screen.getByRole('dialog')).toHaveTextContent('Venue cost history');
   });
 
   it('requires a reason when sending a quote back to the zone', () => {

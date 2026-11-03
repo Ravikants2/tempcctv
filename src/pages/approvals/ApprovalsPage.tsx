@@ -39,11 +39,24 @@ function projectKey(requirement: { clientName: string; examName: string }) {
     .map(value => value.trim().toLocaleLowerCase()).join('\u0000');
 }
 
+type ApprovalSummaryMetric = 'cost' | 'candidates' | 'venues' | 'exceptions';
+
+interface ApprovalBatchSummary {
+  examDate: string;
+  clientName: string;
+  examName: string;
+  records: InstallationRecord[];
+  events: ApprovalEvent[];
+  skippedRecords: string[];
+}
+
 export default function ApprovalsPage() {
   const { data, updateData, addAuditLog, currentUser, can } = useAuth();
   const searchParams = new URLSearchParams(window.location.search);
   const [clientFilter, setClientFilter] = useState(searchParams.get('client') || '');
   const [examFilter, setExamFilter] = useState(searchParams.get('exam') || '');
+  const [selectedExamDate, setSelectedExamDate] = useState('');
+  const [alertExamDate, setAlertExamDate] = useState('');
   const [zoneFilter, setZoneFilter] = useState('');
   const [tcCodeFilter, setTcCodeFilter] = useState('');
   const [page, setPage] = useState(1);
@@ -59,6 +72,8 @@ export default function ApprovalsPage() {
   const [approvalDrilldownClient, setApprovalDrilldownClient] = useState('');
   const [approvalDrilldownExam, setApprovalDrilldownExam] = useState('');
   const [alert, setAlert] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [bulkSummary, setBulkSummary] = useState<ApprovalBatchSummary | null>(null);
+  const [summaryMetric, setSummaryMetric] = useState<ApprovalSummaryMetric | null>(null);
 
   const indexes = useMemo(() => {
     const requirementsById = new Map(data.requirements.map(requirement => [requirement.id, requirement]));
@@ -135,6 +150,8 @@ export default function ApprovalsPage() {
     const requirement = indexes.requirementsById.get(record.requirementId);
     return (!clientFilter || requirement?.clientName === clientFilter) &&
       (!examFilter || requirement?.examName === examFilter) &&
+      (!selectedExamDate || (requirement !== undefined &&
+        getRecordExamDates(record, requirement, indexes.schedulesByRecord).includes(selectedExamDate))) &&
       (!zoneFilter || requirement?.zone === zoneFilter) &&
       (!tcCodeFilter || requirement?.tcCode.replace(/\D/g, '').includes(tcCodeFilter));
   });
@@ -247,17 +264,13 @@ export default function ApprovalsPage() {
     setSelectedIds(previous => previous.filter(id => id !== record.id));
   };
 
-  const handleApproveSelected = () => {
-    if (!clientFilter || !examFilter) {
-      setAlert({ type: 'error', message: 'Select a client and exam before using bulk approval.' });
-      return;
-    }
-    if (selectedQueue.length === 0) {
+  const handleApproveRecords = (records: InstallationRecord[]) => {
+    if (records.length === 0) {
       setAlert({ type: 'error', message: 'Select at least one TC venue to approve.' });
       return;
     }
 
-    const approvalChecks = selectedQueue.map(record => {
+    const approvalChecks = records.map(record => {
       const stage = record.approvalStage || 'surveillance_head';
       const allowed = stage === 'surveillance_head'
         ? can('approve_surveillance')
@@ -313,6 +326,7 @@ export default function ApprovalsPage() {
       quoteRevisionId: revision!.id,
       createdAt: new Date().toISOString(),
     }));
+    const approvedRecords = approved.map(item => item.record);
     const eventsByRecord = new Map(events.map(event => [event.installationRecordId, event]));
     updateData(previous => ({
       ...previous,
@@ -345,11 +359,42 @@ export default function ApprovalsPage() {
       return next;
     });
     setSelectedIds([]);
+    if (selectedExamDate && clientFilter && examFilter) {
+      setSummaryMetric(null);
+      setBulkSummary({
+        examDate: selectedExamDate,
+        clientName: clientFilter,
+        examName: examFilter,
+        records: approvedRecords,
+        events,
+        skippedRecords: skipped.map(item => item.record.id),
+      });
+    }
     setAlert({
       type: 'success',
       message: `${events.length} venue${events.length === 1 ? '' : 's'} approved${skipped.length > 0 ? `; ${skipped.length} skipped` : ''}.`,
     });
   };
+
+  const handleApproveSelected = () => {
+    if (!clientFilter || !examFilter) {
+      setAlert({ type: 'error', message: 'Select a client and exam before using bulk approval.' });
+      return;
+    }
+    handleApproveRecords(selectedQueue);
+  };
+
+  const dateProjectQueue = queue.filter(record => {
+    const requirement = indexes.requirementsById.get(record.requirementId);
+    return Boolean(
+      selectedExamDate &&
+      clientFilter &&
+      examFilter &&
+      requirement?.clientName === clientFilter &&
+      requirement.examName === examFilter &&
+      getRecordExamDates(record, requirement, indexes.schedulesByRecord).includes(selectedExamDate)
+    );
+  });
 
   const openQuotation = (fileId?: string) => {
     if (!fileId) return;
@@ -439,29 +484,47 @@ export default function ApprovalsPage() {
   const urgentPending = queue.flatMap(record => {
     const requirement = indexes.requirementsById.get(record.requirementId);
     if (!requirement) return [];
-    const recordExamDates = indexes.schedulesByRecord.get(record.id)?.map(item => item.examDate) || [];
-    const scheduledDates = requirement.examDate ? [requirement.examDate] : recordExamDates;
-    const examDates = scheduledDates
-      .map(date => ({ date, days: daysUntilExam(date) }))
-      .filter((item): item is { date: string; days: number } =>
-        item.days !== null && item.days <= alertDaysBeforeExam
-      )
-      .sort((left, right) => left.days - right.days);
-    return examDates.length ? [{ record, requirement, exam: examDates[0] }] : [];
-  }).sort((left, right) => left.exam.days - right.exam.days);
+    return getRecordExamDates(record, requirement, indexes.schedulesByRecord)
+      .flatMap(date => {
+        const days = daysUntilExam(date);
+        return days !== null && days <= alertDaysBeforeExam
+          ? [{ record, requirement, examDate: date, days }]
+          : [];
+      });
+  }).sort((left, right) => left.examDate.localeCompare(right.examDate) || left.days - right.days);
 
-  const pendingProjects = [...urgentPending.reduce((groups, { requirement }) => {
-    const key = projectKey(requirement);
-    const group = groups.get(key) || { clientName: requirement.clientName, examName: requirement.examName, count: 0 };
-    group.count += 1;
-    groups.set(key, group);
+  const pendingAlertDates = [...urgentPending.reduce((groups, item) => {
+    const records = groups.get(item.examDate) || new Set<string>();
+    records.add(item.record.id);
+    groups.set(item.examDate, records);
     return groups;
-  }, new Map<string, { clientName: string; examName: string; count: number }>()).values()]
+  }, new Map<string, Set<string>>()).entries()]
+    .map(([examDate, records]) => ({ examDate, count: records.size }))
+    .sort((left, right) => left.examDate.localeCompare(right.examDate));
+  const pendingProjectsForAlertDate = [...urgentPending
+    .filter(item => item.examDate === alertExamDate)
+    .reduce((groups, item) => {
+      const key = projectKey(item.requirement);
+      const group = groups.get(key) || {
+        clientName: item.requirement.clientName,
+        examName: item.requirement.examName,
+        recordIds: new Set<string>(),
+      };
+      group.recordIds.add(item.record.id);
+      groups.set(key, group);
+      return groups;
+    }, new Map<string, { clientName: string; examName: string; recordIds: Set<string> }>()).values()]
+    .map(project => ({
+      clientName: project.clientName,
+      examName: project.examName,
+      count: project.recordIds.size,
+    }))
     .sort((left, right) => left.clientName.localeCompare(right.clientName) || left.examName.localeCompare(right.examName));
 
-  const goToPendingProject = (clientName: string, examName: string) => {
+  const goToPendingProject = (clientName: string, examName: string, examDate: string) => {
     setClientFilter(clientName);
     setExamFilter(examName);
+    setSelectedExamDate(examDate);
     setZoneFilter('');
     setTcCodeFilter('');
     setSelectedIds([]);
@@ -469,6 +532,31 @@ export default function ApprovalsPage() {
     document.querySelector<HTMLElement>('[data-approval-queue]')
       ?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
   };
+
+  const summaryRows = bulkSummary?.records.flatMap(record => {
+    const requirement = indexes.requirementsById.get(record.requirementId);
+    const event = bulkSummary.events.find(item => item.installationRecordId === record.id);
+    return requirement && event
+      ? [{
+          record,
+          requirement,
+          event,
+          candidates: candidatesForExamDate(
+            record,
+            requirement,
+            bulkSummary.examDate,
+            indexes.schedulesByRecord,
+            indexes.revisionsByRecord
+          ),
+        }]
+      : [];
+  }) || [];
+  const summaryTotalCost = summaryRows.reduce((total, row) => total + row.record.localVendorCost, 0);
+  const summaryTotalCandidates = summaryRows.reduce((total, row) => total + row.candidates, 0);
+  const summaryExceptionRows = summaryRows.filter(row => row.event.exception === true);
+  const selectedSummaryRows = summaryMetric === 'exceptions'
+    ? summaryExceptionRows
+    : summaryRows;
 
   return (
     <div className="min-w-0 space-y-5">
@@ -522,16 +610,49 @@ export default function ApprovalsPage() {
       {queue.length > 0 && (
         <section className="space-y-3 rounded-2xl border border-amber-300 bg-amber-50 p-4" aria-label="Pending quotation alerts">
           <h2 className="font-semibold text-amber-950">Pending quotation alerts</h2>
-          {pendingProjects.length > 0 ? (
-            <div className="flex flex-wrap gap-2">
-              {pendingProjects.map(project => (
-                <button key={`${project.clientName}-${project.examName}`} type="button"
-                  onClick={() => goToPendingProject(project.clientName, project.examName)}
-                  className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-semibold text-amber-950 hover:bg-amber-100">
-                  {project.clientName} · {project.examName} ({project.count} {project.count === 1 ? 'venue' : 'venues'})
-                </button>
-              ))}
-            </div>
+          {pendingAlertDates.length > 0 ? (
+            <>
+              <div className="flex flex-wrap gap-2" aria-label="Exam dates with pending quotations">
+                {pendingAlertDates.map(item => (
+                  <button key={item.examDate} type="button"
+                    aria-label={`Pending quotations on ${item.examDate}, ${item.count} ${item.count === 1 ? 'venue' : 'venues'}`}
+                    aria-pressed={alertExamDate === item.examDate}
+                    onClick={() => {
+                      setAlertExamDate(item.examDate);
+                      setClientFilter('');
+                      setExamFilter('');
+                      setSelectedExamDate('');
+                      setZoneFilter('');
+                      setTcCodeFilter('');
+                    }}
+                    className={`rounded-lg border px-3 py-2 text-sm font-semibold ${
+                      alertExamDate === item.examDate
+                        ? 'border-amber-500 bg-amber-200 text-amber-950'
+                        : 'border-amber-300 bg-white text-amber-950 hover:bg-amber-100'
+                    }`}>
+                    {dateLabel(item.examDate)} ({item.count} {item.count === 1 ? 'venue' : 'venues'})
+                  </button>
+                ))}
+              </div>
+              {alertExamDate && (
+                <div className="space-y-2 border-t border-amber-200 pt-3">
+                  <p className="text-sm font-medium text-amber-950">
+                    Client and exam · {dateLabel(alertExamDate)}
+                  </p>
+                  {pendingProjectsForAlertDate.length > 0 ? (
+                    <div className="flex flex-wrap gap-2">
+                      {pendingProjectsForAlertDate.map(project => (
+                        <button key={`${project.clientName}-${project.examName}`} type="button"
+                          onClick={() => goToPendingProject(project.clientName, project.examName, alertExamDate)}
+                          className="rounded-lg border border-amber-300 bg-white px-3 py-2 text-left text-sm font-semibold text-amber-950 hover:bg-amber-100">
+                          {project.clientName} · {project.examName} ({project.count} {project.count === 1 ? 'venue' : 'venues'})
+                        </button>
+                      ))}
+                    </div>
+                  ) : <p className="text-sm text-amber-900">No pending quotations for this date.</p>}
+                </div>
+              )}
+            </>
           ) : (
             <p className="text-sm text-amber-900">
               No pending quotations have exams within {alertDaysBeforeExam} days.
@@ -582,6 +703,12 @@ export default function ApprovalsPage() {
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2">
+                {selectedExamDate && clientFilter && examFilter && (
+                  <Button size="sm" disabled={dateProjectQueue.length === 0}
+                    onClick={() => handleApproveRecords(dateProjectQueue)}>
+                    <Check size={14} /> Approve all eligible ({dateProjectQueue.length})
+                  </Button>
+                )}
                 <Button variant="outline" size="sm" onClick={() => exportApprovalsToExcel(filteredQueue, data, 'Pending approval queue')}>
                   <Download size={14} /> Excel ({filteredQueue.length})
                 </Button>
@@ -1220,8 +1347,144 @@ export default function ApprovalsPage() {
           )}
         </div>
       </Modal>
+
+      <Modal
+        open={Boolean(bulkSummary)}
+        onClose={() => { setBulkSummary(null); setSummaryMetric(null); }}
+        title="Bulk approval summary"
+        size="xl"
+      >
+        {bulkSummary && (
+          <div className="max-h-[78vh] space-y-4 overflow-y-auto">
+            <div className="rounded-xl bg-slate-50 p-3 text-sm text-slate-700">
+              <p className="font-semibold text-slate-900">
+                {bulkSummary.clientName} · {bulkSummary.examName} · {dateLabel(bulkSummary.examDate)}
+              </p>
+              <p>Approved at your current stage by {currentUser?.name || 'current approver'}.</p>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              {([
+                ['cost', 'Total approved quote cost', money(summaryTotalCost)],
+                ['candidates', 'Scheduled candidates', summaryTotalCandidates.toLocaleString('en-IN')],
+                ['venues', 'Venues approved', summaryRows.length.toLocaleString('en-IN')],
+                ['exceptions', 'Higher-cost exceptions', summaryExceptionRows.length.toLocaleString('en-IN')],
+              ] as Array<[ApprovalSummaryMetric, string, string]>).map(([metric, label, value]) => (
+                <button key={metric} type="button" onClick={() => setSummaryMetric(current => current === metric ? null : metric)}
+                  aria-pressed={summaryMetric === metric}
+                  className={`rounded-xl border p-3 text-left transition ${
+                    summaryMetric === metric
+                      ? 'border-blue-400 bg-blue-50 ring-2 ring-blue-100'
+                      : 'border-slate-200 bg-white hover:border-blue-300 hover:bg-blue-50/40'
+                  }`}>
+                  <span className="block text-xs text-slate-500">{label}</span>
+                  <span className="mt-1 block text-lg font-bold text-slate-900">{value}</span>
+                  <span className="mt-1 block text-[11px] text-blue-700">Click for details</span>
+                </button>
+              ))}
+            </div>
+
+            {bulkSummary.skippedRecords.length > 0 && (
+              <p className="rounded-lg border border-amber-200 bg-amber-50 p-3 text-sm text-amber-900" role="status">
+                {bulkSummary.skippedRecords.length} venue{bulkSummary.skippedRecords.length === 1 ? '' : 's'} skipped because higher-cost approval requires remarks and exception approval.
+              </p>
+            )}
+
+            {summaryMetric && (
+              <section className="overflow-hidden rounded-xl border border-slate-200">
+                <div className="flex flex-wrap items-center justify-between gap-2 bg-slate-50 px-3 py-2">
+                  <h3 className="text-sm font-semibold text-slate-900">
+                    {summaryMetric === 'cost' ? 'Approved quote cost by venue'
+                      : summaryMetric === 'candidates' ? 'Scheduled candidates by venue'
+                        : summaryMetric === 'exceptions' ? 'Higher-cost exception approvals'
+                          : 'Approved venues'}
+                  </h3>
+                  <span className="text-xs text-slate-500">Select a venue for quote and approval history</span>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full min-w-[720px] text-left text-sm">
+                    <thead className="bg-white text-xs uppercase text-slate-500">
+                      <tr>
+                        {['Venue', 'TC code', 'Measure', 'Approval stage', 'Remarks', 'Details'].map(label =>
+                          <th key={label} className="px-3 py-2">{label}</th>
+                        )}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {selectedSummaryRows.map(row => (
+                        <tr key={row.record.id} className="border-t border-slate-100 align-top">
+                          <td className="px-3 py-2 font-medium">{row.requirement.tcName}</td>
+                          <td className="px-3 py-2 font-mono text-xs">{row.requirement.tcCode}</td>
+                          <td className="px-3 py-2">
+                            {summaryMetric === 'cost' ? money(row.record.localVendorCost)
+                              : summaryMetric === 'candidates' ? row.candidates.toLocaleString('en-IN')
+                                : summaryMetric === 'exceptions' ? 'Higher-cost exception'
+                                  : 'Approved'}
+                          </td>
+                          <td className="px-3 py-2">{stageTitle[row.event.stage]} · {data.users.find(user => user.id === row.event.userId)?.name || 'Former user'}</td>
+                          <td className="max-w-xs whitespace-normal px-3 py-2 text-slate-600">
+                            {row.event.exception ? row.event.remarks : '—'}
+                          </td>
+                          <td className="px-3 py-2">
+                            <Button variant="outline" size="sm" onClick={() => {
+                              setBulkSummary(null);
+                              setSummaryMetric(null);
+                              setDetailRecordId(row.record.id);
+                            }}>
+                              <History size={13} /> Venue history
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                      {selectedSummaryRows.length === 0 && (
+                        <tr><td colSpan={6} className="px-3 py-6 text-center text-sm text-slate-500">
+                          No higher-cost exceptions were approved in this batch.
+                        </td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </section>
+            )}
+          </div>
+        )}
+      </Modal>
     </div>
   );
+}
+
+function getRecordExamDates(
+  record: InstallationRecord,
+  requirement: { examDate?: string },
+  schedulesByRecord: Map<string, Array<{ examDate: string }>>
+): string[] {
+  const dates = requirement.examDate
+    ? [requirement.examDate]
+    : (schedulesByRecord.get(record.id) || []).map(item => item.examDate);
+  return [...new Set(dates
+    .map(date => normalizeExamDate(date) || date)
+    .filter(Boolean))].sort((left, right) => left.localeCompare(right));
+}
+
+function candidatesForExamDate(
+  record: InstallationRecord,
+  requirement: { examDate?: string; scheduledCandidates?: number },
+  examDate: string,
+  schedulesByRecord: Map<string, Array<{ examDate: string; scheduledCandidates: number }>>,
+  revisionsByRecord: Map<string, QuoteRevision[]>
+): number {
+  if ((normalizeExamDate(requirement.examDate || '') || requirement.examDate) === examDate &&
+      requirement.scheduledCandidates !== undefined) {
+    return requirement.scheduledCandidates;
+  }
+  const scheduledCandidates = (schedulesByRecord.get(record.id) || [])
+    .filter(item => (normalizeExamDate(item.examDate) || item.examDate) === examDate)
+    .reduce((total, item) => total + item.scheduledCandidates, 0);
+  if (scheduledCandidates > 0) return scheduledCandidates;
+  const latestRevision = (revisionsByRecord.get(record.id) || []).slice(-1)[0];
+  return latestRevision?.examDates
+    .filter(item => (normalizeExamDate(item.examDate) || item.examDate) === examDate)
+    .reduce((total, item) => total + item.scheduledCandidates, 0) || 0;
 }
 
 function getCostFlags(record: InstallationRecord, previousQuoteCost?: number) {
