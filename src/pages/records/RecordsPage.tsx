@@ -6,9 +6,8 @@ import { Button } from '../../components/ui/Button';
 import { Input, Select } from '../../components/ui/FormFields';
 import { KPICard } from '../../components/ui/index';
 import { downloadInstallationTemplate, exportRecordsToExcel } from '../../utils/excel';
-import { printRecordsPDF } from '../../utils/pdf';
 import { getInstallationStats } from '../../utils/calculations';
-import { Download, Printer, Eye, Pencil } from 'lucide-react';
+import { ChevronDown, Download, Eye, Menu, Pencil } from 'lucide-react';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { CostValue } from '../../components/ui/CostValue';
 import { normalizeExamDate } from '../../utils/dates';
@@ -27,6 +26,8 @@ export default function RecordsPage() {
   const [filterCity, setFilterCity] = useState('');
   const [filterTcCode, setFilterTcCode] = useState('');
   const [approvalFilter, setApprovalFilter] = useState<'all' | 'pending' | 'approved' | 'returned'>('all');
+  const [pendingProjectsOpen, setPendingProjectsOpen] = useState(false);
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const [page, setPage] = useState(1);
 
   const scopedRequirements = data.requirements.filter(r => currentUser?.role !== 'zonal_user' || r.zone === currentUser.zone);
@@ -160,17 +161,6 @@ export default function RecordsPage() {
     if (win) win.document.write(`<iframe src="${q.dataUrl}" width="100%" height="100%" style="border:none"></iframe>`);
   };
 
-  const filterLabel = [
-    filterClient && `Client: ${filterClient}`,
-    filterExam && `Exam: ${filterExam}`,
-    filterZone && `Zone: ${filterZone}`,
-    filterState && `State: ${filterState}`,
-    filterCity && `City: ${filterCity}`,
-    filterTcCode && `TC Code: ${filterTcCode}`,
-    startDate && `From: ${startDate}`,
-    endDate && `To: ${endDate}`,
-  ].filter(Boolean).join(' | ');
-
   return (
     <div>
       <div className="mb-6 flex flex-wrap items-end justify-between gap-4">
@@ -182,9 +172,6 @@ export default function RecordsPage() {
         <div className="flex gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={() => exportRecordsToExcel(filtered, scopedRequirements, data.vendors.filter(vendor => currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone), data.examDates)}>
             <Download size={14} /> Excel ({filtered.length})
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => printRecordsPDF(filtered, scopedRequirements, data.vendors.filter(vendor => currentUser?.role !== 'zonal_user' || vendor.zone === currentUser.zone), data.examDates, filterLabel)}>
-            <Printer size={14} /> PDF
           </Button>
           <Button variant="outline" size="sm"
             onClick={() => downloadInstallationTemplate(templateRequirements, templateVendors, templateExamDates)}>
@@ -216,31 +203,48 @@ export default function RecordsPage() {
 
       {pendingByProject.length > 0 && (
         <section className="mb-5 rounded-xl border border-amber-300 bg-amber-50 p-4" aria-label="Quotations pending approval by client and exam">
-          <h2 className="font-semibold text-amber-950">Quotations waiting for approval</h2>
-          <div className="mt-2 flex flex-wrap gap-2">
-            {pendingByProject.map(project => (
-              <button key={`${project.clientName}-${project.examName}`} type="button"
-                onClick={() => showProjectPendingRecords(project.clientName, project.examName)}
-                title="View these pending quotations in Records"
-                className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
-                <span className="font-medium">{project.clientName} · {project.examName}</span>
-                <span className="ml-2">{project.count} pending · View records</span>
-              </button>
-            ))}
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="font-semibold text-amber-950">Quotations waiting for approval</h2>
+            <button type="button" onClick={() => setPendingProjectsOpen(open => !open)}
+              aria-expanded={pendingProjectsOpen} aria-controls="pending-project-quotations"
+              className="inline-flex items-center gap-2 rounded-lg border border-amber-300 bg-white px-3 py-1.5 text-sm font-medium text-amber-950 hover:bg-amber-100">
+              {pendingProjectsOpen ? 'Hide' : `View ${pendingByProject.length} projects`}
+              <ChevronDown size={16} className={pendingProjectsOpen ? 'rotate-180 transition-transform' : 'transition-transform'} />
+            </button>
           </div>
+          {pendingProjectsOpen && (
+            <div id="pending-project-quotations" className="mt-2 flex flex-wrap gap-2">
+              {pendingByProject.map(project => (
+                <button key={`${project.clientName}-${project.examName}`} type="button"
+                  onClick={() => showProjectPendingRecords(project.clientName, project.examName)}
+                  title="View these pending quotations in Records"
+                  className="rounded-lg border border-amber-200 bg-white px-3 py-2 text-left text-sm text-amber-950 hover:bg-amber-100">
+                  <span className="font-medium">{project.clientName} · {project.examName}</span>
+                  <span className="ml-2">{project.count} pending · View records</span>
+                </button>
+              ))}
+            </div>
+          )}
         </section>
       )}
 
       {/* Filters */}
       <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="mb-3 flex items-center justify-between gap-3">
-          <div>
+          <button type="button" onClick={() => setFiltersOpen(open => !open)}
+            aria-expanded={filtersOpen} aria-controls="record-filters"
+            className="flex items-center gap-2 text-left">
+            <Menu size={20} className="shrink-0 text-slate-600" aria-hidden="true" />
+            <span>
             <h2 className="text-sm font-semibold text-slate-800">Filter records</h2>
-            <p className="mt-0.5 text-xs text-slate-500">Filters apply to the table and exported reports.</p>
-          </div>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                {filtersOpen ? 'Filters apply to the table and exported reports.' : 'Click to show filters.'}
+              </span>
+            </span>
+          </button>
           <span className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">{filtered.length} results</span>
         </div>
-        <div className="flex flex-wrap items-end gap-3">
+        {filtersOpen && <div id="record-filters" className="flex flex-wrap items-end gap-3">
         <Input type="date" label="Start date" value={startDate} onChange={e => { setStartDate(e.target.value); setPage(1); }} className="w-36" />
         <Input type="date" label="End date" value={endDate} onChange={e => { setEndDate(e.target.value); setPage(1); }} className="w-36" />
         <Select label="Client" value={filterClient} onChange={e => { setFilterClient(e.target.value); setFilterExam(''); setPage(1); }}
@@ -267,7 +271,7 @@ export default function RecordsPage() {
         {(filterClient || filterExam || filterZone || filterState || filterCity || filterTcCode || startDate || endDate || approvalFilter !== 'all') && (
           <Button variant="ghost" size="sm" className="mb-0.5" onClick={() => { setFilterClient(''); setFilterExam(''); setFilterZone(''); setFilterState(''); setFilterCity(''); setFilterTcCode(''); setStartDate(''); setEndDate(''); showApprovalStatus('all'); }}>Clear filters</Button>
         )}
-        </div>
+        </div>}
       </div>
 
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
