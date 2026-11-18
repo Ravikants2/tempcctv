@@ -190,12 +190,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     } catch (error) {
       const status = (error as Error & { status?: number }).status;
       if (status === 401) return false;
-      if (currentUser === null) await logoutUser();
       setSyncStatus('error');
       setSyncError((error as Error).message);
       throw error;
     }
-  }, [currentUser]);
+  }, []);
 
   const logout = useCallback(async () => {
     try {
