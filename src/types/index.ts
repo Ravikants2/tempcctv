@@ -102,6 +102,10 @@ export interface InstallationRecord {
   approvalStage?: ApprovalStage;
   workOrderDownloadedAt?: string;
   workOrderDownloadedBy?: string;
+  tempCctvInstalledAt?: string;
+  tempCctvInstalledBy?: string;
+  tempCctvInstallationDeclaredAt?: string;
+  tempCctvInstallationDeclaration?: string;
 }
 
 export interface QuoteRevision {

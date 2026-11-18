@@ -84,12 +84,20 @@ describe('Cloudflare Worker API client', () => {
         updatedAt: downloadedAt,
         workOrderDownloadedAt: downloadedAt,
         workOrderDownloadedBy: 'user-1',
+        tempCctvInstalledAt: '2026-11-17',
+        tempCctvInstalledBy: 'zonal-1',
+        tempCctvInstallationDeclaredAt: downloadedAt,
+        tempCctvInstallationDeclaration: 'Installation confirmed.',
       }],
     });
 
     expect(normalized.installations[0]).toMatchObject({
       workOrderDownloadedAt: downloadedAt,
       workOrderDownloadedBy: 'user-1',
+      tempCctvInstalledAt: '2026-11-17',
+      tempCctvInstalledBy: 'zonal-1',
+      tempCctvInstallationDeclaredAt: downloadedAt,
+      tempCctvInstallationDeclaration: 'Installation confirmed.',
     });
   });
 });

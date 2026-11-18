@@ -5,14 +5,16 @@ import { SortableTable } from '../../components/ui/SortableTable';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { getRequirementExamSchedule } from '../../utils/calculations';
 import { normalizeExamDate } from '../../utils/dates';
+import type { InstallationRecord } from '../../types';
 
 const PAGE_SIZE = 10;
 
-type InstallationStatus = 'Pending approval' | 'Approved / Ready' | 'Scheduled' | 'Completed' | 'Sent back';
+type InstallationStatus = 'Pending approval' | 'Approved / Ready' | 'Scheduled' | 'Pending installation' | 'Completed' | 'Sent back';
 
-function statusFor(approvalStatus: string | undefined, examDates: string[]): InstallationStatus {
-  if (approvalStatus === 'returned') return 'Sent back';
-  if (approvalStatus !== 'approved') return 'Pending approval';
+function statusFor(record: InstallationRecord, examDates: string[]): InstallationStatus {
+  if (record.approvalStatus === 'returned') return 'Sent back';
+  if (record.approvalStatus !== 'approved') return 'Pending approval';
+  if (record.tempCctvInstalledAt) return 'Completed';
   if (examDates.length === 0) return 'Approved / Ready';
   const today = new Date().toISOString().slice(0, 10);
   const latestDate = examDates
@@ -20,7 +22,7 @@ function statusFor(approvalStatus: string | undefined, examDates: string[]): Ins
     .filter((date): date is string => Boolean(date))
     .sort()
     .slice(-1)[0];
-  return latestDate && latestDate < today ? 'Completed' : 'Scheduled';
+  return latestDate && latestDate < today ? 'Pending installation' : 'Scheduled';
 }
 
 export default function InstallationStatusPage() {
@@ -37,7 +39,7 @@ export default function InstallationStatusPage() {
     if (!requirement) return [];
     const schedule = getRequirementExamSchedule(record.requirementId, data.requirements, data.installations, data.examDates);
     const examDates = [...new Set(schedule.map(item => normalizeExamDate(item.examDate) || item.examDate))];
-    return [{ record, requirement, examDates, status: statusFor(record.approvalStatus, examDates) }];
+    return [{ record, requirement, examDates, status: statusFor(record, examDates) }];
   });
 
   const query = search.trim().toLowerCase();
@@ -69,7 +71,7 @@ export default function InstallationStatusPage() {
       <div className="mb-6">
         <p className="mb-1 text-xs font-semibold uppercase tracking-[0.16em] text-blue-700">Operations tracking</p>
         <h1 className="text-2xl font-bold tracking-tight text-slate-900">Temp. CCTV intallation status</h1>
-        <p className="mt-1 text-sm text-slate-500">Track temporary CCTV records from approval through completed exam dates.</p>
+        <p className="mt-1 text-sm text-slate-500">Track temporary CCTV records from approval through confirmed installation.</p>
       </div>
 
       <div className="mb-5 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
@@ -82,6 +84,7 @@ export default function InstallationStatusPage() {
               { value: 'Pending approval', label: 'Pending approval' },
               { value: 'Approved / Ready', label: 'Approved / Ready' },
               { value: 'Scheduled', label: 'Scheduled' },
+              { value: 'Pending installation', label: 'Pending installation' },
               { value: 'Completed', label: 'Completed' },
               { value: 'Sent back', label: 'Sent back' },
             ]}
@@ -97,14 +100,14 @@ export default function InstallationStatusPage() {
           <SortableTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                {['S No', 'Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Exam Dates', 'Cameras', 'Status'].map(heading =>
+                {['S No', 'Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Exam Dates', 'Cameras', 'Installation Date', 'Status'].map(heading =>
                   <th key={heading} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{heading}</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
-                <tr><td colSpan={9} className="px-4 py-8 text-center text-slate-400">No installation records found.</td></tr>
+                <tr><td colSpan={10} className="px-4 py-8 text-center text-slate-400">No installation records found.</td></tr>
               ) : pageRows.map(({ record, requirement, examDates, status }, index) => (
                 <tr key={record.id} className="border-t border-slate-100 hover:bg-blue-50/40">
                   <td className="px-3 py-3">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
@@ -115,6 +118,7 @@ export default function InstallationStatusPage() {
                   <td className="px-3 py-3">{requirement.tcName}</td>
                   <td className="px-3 py-3">{examDates.join(', ') || '—'}</td>
                   <td className="px-3 py-3">{record.cameraCount}</td>
+                  <td className="px-3 py-3">{record.tempCctvInstalledAt || '—'}</td>
                   <td className="px-3 py-3">
                     <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass(status)}`}>{status}</span>
                   </td>

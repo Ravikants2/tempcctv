@@ -321,23 +321,25 @@ export default function OperationsDashboard() {
               <SortableTable className="w-full table-fixed text-sm">
                 <thead><tr className="bg-gray-50">
                   {[
-                    ['Exam', 'w-[14%]'],
-                    ['Zone', 'w-[9%]'],
-                    ['State', 'w-[11%]'],
-                    ['City', 'w-[10%]'],
-                    ['TC Code', 'w-[9%]'],
-                    ['TC Name', 'w-[19%]'],
+                    ['Exam', 'w-[12%]'],
+                    ['Zone', 'w-[7%]'],
+                    ['State', 'w-[8%]'],
+                    ['City', 'w-[8%]'],
+                    ['TC Code', 'w-[8%]'],
+                    ['TC Name', 'w-[15%]'],
                     ['Record Status', 'w-[9%]'],
                     ['Approval Status', 'w-[10%]'],
-                    ['WO Status', 'w-[9%]'],
+                    ['WO Status', 'w-[8%]'],
+                    ['Temp. CCTV Status', 'w-[8%]'],
+                    ['Installation Date', 'w-[7%]'],
                   ].map(([heading, width]) => (
                     <th key={heading} className={`px-3 py-2 text-left text-xs font-semibold text-gray-600 ${width}`}>{heading}</th>
                   ))}
                 </tr></thead>
                 <tbody>
                   {venuePageRows.length === 0 ? (
-                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No venues match these filters.</td></tr>
-                  ) : venuePageRows.map(({ requirement, recordStatus, approvalStatus, workorderStatus }) => (
+                    <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">No venues match these filters.</td></tr>
+                  ) : venuePageRows.map(({ requirement, installation, recordStatus, approvalStatus, workorderStatus }) => (
                     <tr key={requirement.id} className="border-t hover:bg-gray-50">
                       <td className="px-3 py-2 break-words">{requirement.examName}</td>
                       <td className="px-3 py-2 break-words">{requirement.zone}</td>
@@ -367,6 +369,12 @@ export default function OperationsDashboard() {
                               : 'neutral'
                         }>{workorderStatus}</Badge>
                       </td>
+                      <td className="px-3 py-2">
+                        <Badge variant={installation?.tempCctvInstalledAt ? 'success' : 'warning'}>
+                          {installation?.tempCctvInstalledAt ? 'Completed' : 'Pending'}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2">{installation?.tempCctvInstalledAt || '—'}</td>
                     </tr>
                   ))}
                 </tbody>
