@@ -30,6 +30,7 @@ export default function OperationsDashboard() {
     recordStatus: '',
     approvalStatus: '',
     workorderStatus: '',
+    installationStatus: '',
   });
 
   const filtered = applyDashboardFilters(data.installations, data.requirements, data.examDates, filters);
@@ -43,6 +44,9 @@ export default function OperationsDashboard() {
   const approvedFiltered = filtered.filter(i => i.approvalStatus === 'approved');
   const workordersDownloaded = approvedFiltered.filter(i => i.workOrderDownloadedAt).length;
   const workordersPending = approvedFiltered.length - workordersDownloaded;
+  const downloadedInstallations = filtered.filter(installation => installation.workOrderDownloadedAt);
+  const tempCctvInstalled = downloadedInstallations.filter(installation => installation.tempCctvInstalledAt).length;
+  const tempCctvPending = downloadedInstallations.length - tempCctvInstalled;
   const workorderRows = approvedFiltered;
 
   const clientSummaries = [...new Set(allReqs.map(requirement => requirement.clientName))]
@@ -63,6 +67,8 @@ export default function OperationsDashboard() {
         installation.approvalStatus === 'approved'
       );
       const downloaded = approved.filter(installation => installation.workOrderDownloadedAt);
+      const tempCctvEligible = clientInstallations.filter(installation => installation.workOrderDownloadedAt);
+      const tempCctvCompleted = tempCctvEligible.filter(installation => installation.tempCctvInstalledAt).length;
 
       return {
         clientName,
@@ -73,6 +79,8 @@ export default function OperationsDashboard() {
         approved: approved.length,
         workordersDownloaded: downloaded.length,
         workordersPending: approved.length - downloaded.length,
+        tempCctvCompleted,
+        tempCctvPending: tempCctvEligible.length - tempCctvCompleted,
       };
     });
 
@@ -86,6 +94,8 @@ export default function OperationsDashboard() {
       const examInstallations = filtered.filter(installation =>
         examRequirements.some(requirement => requirement.id === installation.requirementId)
       );
+      const tempCctvEligible = examInstallations.filter(installation => installation.workOrderDownloadedAt);
+      const tempCctvCompleted = tempCctvEligible.filter(installation => installation.tempCctvInstalledAt).length;
       return {
         examName,
         venues: examRequirements.length,
@@ -97,6 +107,8 @@ export default function OperationsDashboard() {
         downloaded: examInstallations.filter(installation =>
           installation.approvalStatus === 'approved' && installation.workOrderDownloadedAt
         ).length,
+        tempCctvCompleted,
+        tempCctvPending: tempCctvEligible.length - tempCctvCompleted,
       };
     });
   const selectedClientVenueRows = selectedClientRequirements.map(requirement => {
@@ -110,7 +122,10 @@ export default function OperationsDashboard() {
       : installation.approvalStatus === 'approved'
         ? installation.workOrderDownloadedAt ? 'Downloaded' : 'Pending'
         : 'Waiting for approval';
-    return { requirement, installation, approvalStatus, recordStatus, workorderStatus };
+    const installationStatus = !installation?.workOrderDownloadedAt
+      ? 'Awaiting workorder'
+      : installation.tempCctvInstalledAt ? 'Completed' : 'Pending';
+    return { requirement, installation, approvalStatus, recordStatus, workorderStatus, installationStatus };
   });
   const filteredClientVenueRows = selectedClientVenueRows.filter(row =>
     (!venueFilters.exam || row.requirement.examName === venueFilters.exam) &&
@@ -118,7 +133,8 @@ export default function OperationsDashboard() {
     (!venueFilters.state || row.requirement.state === venueFilters.state) &&
     (!venueFilters.recordStatus || row.recordStatus === venueFilters.recordStatus) &&
     (!venueFilters.approvalStatus || row.approvalStatus === venueFilters.approvalStatus) &&
-    (!venueFilters.workorderStatus || row.workorderStatus === venueFilters.workorderStatus)
+    (!venueFilters.workorderStatus || row.workorderStatus === venueFilters.workorderStatus) &&
+    (!venueFilters.installationStatus || row.installationStatus === venueFilters.installationStatus)
   );
   const venuePageCount = Math.max(1, Math.ceil(filteredClientVenueRows.length / PAGE_SIZE));
   const currentVenuePage = Math.min(venuePage, venuePageCount);
@@ -133,6 +149,7 @@ export default function OperationsDashboard() {
     recordStatuses: [...new Set(selectedClientVenueRows.map(row => row.recordStatus))].sort(),
     approvalStatuses: [...new Set(selectedClientVenueRows.map(row => row.approvalStatus))].sort(),
     workorderStatuses: [...new Set(selectedClientVenueRows.map(row => row.workorderStatus))].sort(),
+    installationStatuses: [...new Set(selectedClientVenueRows.map(row => row.installationStatus))].sort(),
   };
   const updateVenueFilter = (key: keyof typeof venueFilters, value: string) => {
     setVenueFilters(previous => ({ ...previous, [key]: value }));
@@ -214,7 +231,7 @@ export default function OperationsDashboard() {
       <GlobalFilters />
       <h1 className="text-xl font-bold text-gray-900 mb-4">Operations Dashboard</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 xl:grid-cols-10 gap-4 mb-8">
         <KPICard title="Required Venues" value={allReqs.length} icon={<CheckCircle size={20} />} color="blue" />
         <KPICard title="Completed" value={completion.completed.length} icon={<CheckCircle size={20} />} color="green" />
         <KPICard title="Pending" value={pending.length} icon={<Clock size={20} />} color="orange" onClick={() => setKpiDetail('pending')} />
@@ -223,26 +240,36 @@ export default function OperationsDashboard() {
         <KPICard title="Quotation Missing" value={withoutQuotation} icon={<AlertTriangle size={20} />} color="red" onClick={() => setKpiDetail('attention')} />
         <KPICard title="Workorders Downloaded" value={workordersDownloaded} icon={<FileText size={20} />} color="green" />
         <KPICard title="Workorders Pending" value={workordersPending} icon={<Clock size={20} />} color="orange" />
+        <KPICard title="Temp. CCTV Installed" value={tempCctvInstalled} icon={<CheckCircle size={20} />} color="green" />
+        <KPICard title="Temp. CCTV Pending" value={tempCctvPending} icon={<Clock size={20} />} color="orange" />
       </div>
 
       <div className="bg-white border rounded-xl shadow-sm overflow-x-auto mb-6">
         <div className="px-4 py-3 border-b font-semibold text-gray-800">Client-wise Approval &amp; Workorder Summary</div>
         <SortableTable className="w-full text-sm">
           <thead><tr className="bg-gray-50">
-            {['Client','Venues','Records Pending','Sent for Approval','Pending Approval','Approved','WO Downloaded','WO Pending'].map(h => (
+            {['Client','Venues','Records Pending','Sent for Approval','Pending Approval','Approved','WO Downloaded','WO Pending','Temp. CCTV Installed','Temp. CCTV Pending'].map(h => (
               <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
             ))}
           </tr></thead>
           <tbody>
             {clientSummaries.length === 0 ? (
-              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No client records found.</td></tr>
+              <tr><td colSpan={10} className="px-4 py-8 text-center text-gray-400">No client records found.</td></tr>
             ) : clientSummaries.map(summary => (
               <tr key={summary.clientName} className="border-t hover:bg-blue-50/40">
                 <td className="px-3 py-2">
                   <button type="button" onClick={() => {
                     setSelectedClient(selectedClient === summary.clientName ? null : summary.clientName);
                     setVenuePage(1);
-                    setVenueFilters({ exam: '', zone: '', state: '', recordStatus: '', approvalStatus: '', workorderStatus: '' });
+                    setVenueFilters({
+                      exam: '',
+                      zone: '',
+                      state: '',
+                      recordStatus: '',
+                      approvalStatus: '',
+                      workorderStatus: '',
+                      installationStatus: '',
+                    });
                   }}
                     className="font-semibold text-blue-700 hover:underline">
                     {summary.clientName}
@@ -255,6 +282,8 @@ export default function OperationsDashboard() {
                 <td className="px-3 py-2">{summary.approved}</td>
                 <td className="px-3 py-2">{summary.workordersDownloaded}</td>
                 <td className="px-3 py-2">{summary.workordersPending}</td>
+                <td className="px-3 py-2">{summary.tempCctvCompleted}</td>
+                <td className="px-3 py-2">{summary.tempCctvPending}</td>
               </tr>
             ))}
           </tbody>
@@ -276,7 +305,7 @@ export default function OperationsDashboard() {
             <div className="px-4 py-3 border-b font-semibold text-gray-800">Exam-wise Summary</div>
             <SortableTable className="w-full text-sm">
               <thead><tr className="bg-gray-50">
-                {['Exam','Venues','Sent for Approval','Pending Approval','Approved','WO Downloaded'].map(h => (
+                {['Exam','Venues','Sent for Approval','Pending Approval','Approved','WO Downloaded','Temp. CCTV Installed','Temp. CCTV Pending'].map(h => (
                   <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
                 ))}
               </tr></thead>
@@ -289,6 +318,8 @@ export default function OperationsDashboard() {
                     <td className="px-3 py-2">{exam.pendingApproval}</td>
                     <td className="px-3 py-2">{exam.approved}</td>
                     <td className="px-3 py-2">{exam.downloaded}</td>
+                    <td className="px-3 py-2">{exam.tempCctvCompleted}</td>
+                    <td className="px-3 py-2">{exam.tempCctvPending}</td>
                   </tr>
                 ))}
               </tbody>
@@ -313,6 +344,8 @@ export default function OperationsDashboard() {
                 }))} placeholder="All approval statuses" className="w-48" />
               <Select label="WO status" value={venueFilters.workorderStatus} onChange={event => updateVenueFilter('workorderStatus', event.target.value)}
                 options={venueFilterOptions.workorderStatuses.map(value => ({ value, label: value }))} placeholder="All WO statuses" className="w-44" />
+              <Select label="Temp. CCTV status" value={venueFilters.installationStatus} onChange={event => updateVenueFilter('installationStatus', event.target.value)}
+                options={venueFilterOptions.installationStatuses.map(value => ({ value, label: value }))} placeholder="All installation statuses" className="w-48" />
               <span className="mb-0.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
                 {filteredClientVenueRows.length} venues
               </span>
@@ -339,7 +372,7 @@ export default function OperationsDashboard() {
                 <tbody>
                   {venuePageRows.length === 0 ? (
                     <tr><td colSpan={11} className="px-4 py-8 text-center text-gray-400">No venues match these filters.</td></tr>
-                  ) : venuePageRows.map(({ requirement, installation, recordStatus, approvalStatus, workorderStatus }) => (
+                  ) : venuePageRows.map(({ requirement, installation, recordStatus, approvalStatus, workorderStatus, installationStatus }) => (
                     <tr key={requirement.id} className="border-t hover:bg-gray-50">
                       <td className="px-3 py-2 break-words">{requirement.examName}</td>
                       <td className="px-3 py-2 break-words">{requirement.zone}</td>
@@ -370,8 +403,12 @@ export default function OperationsDashboard() {
                         }>{workorderStatus}</Badge>
                       </td>
                       <td className="px-3 py-2">
-                        <Badge variant={installation?.tempCctvInstalledAt ? 'success' : 'warning'}>
-                          {installation?.tempCctvInstalledAt ? 'Completed' : 'Pending'}
+                        <Badge variant={
+                          installationStatus === 'Completed' ? 'success'
+                            : installationStatus === 'Pending' ? 'warning'
+                              : 'neutral'
+                        }>
+                          {installationStatus}
                         </Badge>
                       </td>
                       <td className="px-3 py-2">{installation?.tempCctvInstalledAt || '—'}</td>
