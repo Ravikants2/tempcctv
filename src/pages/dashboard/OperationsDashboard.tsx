@@ -5,6 +5,7 @@ import { useAuth } from '../../context/AuthContext';
 import { useFilters } from '../../context/FilterContext';
 import { GlobalFilters } from '../../components/dashboard/GlobalFilters';
 import { KPICard, Badge } from '../../components/ui/index';
+import { Select } from '../../components/ui/FormFields';
 import { applyDashboardFilters, getInstallationStats, getRequirementCompletion } from '../../utils/calculations';
 import { CheckCircle, Clock, FileText, AlertTriangle, Pencil } from 'lucide-react';
 import { CostValue } from '../../components/ui/CostValue';
@@ -21,6 +22,15 @@ export default function OperationsDashboard() {
   const [pendingPage, setPendingPage] = useState(1);
   const [attentionPage, setAttentionPage] = useState(1);
   const [selectedClient, setSelectedClient] = useState<string | null>(null);
+  const [venuePage, setVenuePage] = useState(1);
+  const [venueFilters, setVenueFilters] = useState({
+    exam: '',
+    zone: '',
+    state: '',
+    recordStatus: '',
+    approvalStatus: '',
+    workorderStatus: '',
+  });
 
   const filtered = applyDashboardFilters(data.installations, data.requirements, data.examDates, filters);
   const completion = getRequirementCompletion(data.requirements, data.installations, filters);
@@ -89,6 +99,45 @@ export default function OperationsDashboard() {
         ).length,
       };
     });
+  const selectedClientVenueRows = selectedClientRequirements.map(requirement => {
+    const installation = filtered.find(item => item.requirementId === requirement.id);
+    const approvalStatus = installation
+      ? (installation.approvalStatus || 'pending')
+      : 'Not created';
+    const recordStatus = installation ? 'Created' : 'Pending';
+    const workorderStatus = !installation
+      ? 'Not applicable'
+      : installation.approvalStatus === 'approved'
+        ? installation.workOrderDownloadedAt ? 'Downloaded' : 'Pending'
+        : 'Waiting for approval';
+    return { requirement, installation, approvalStatus, recordStatus, workorderStatus };
+  });
+  const filteredClientVenueRows = selectedClientVenueRows.filter(row =>
+    (!venueFilters.exam || row.requirement.examName === venueFilters.exam) &&
+    (!venueFilters.zone || row.requirement.zone === venueFilters.zone) &&
+    (!venueFilters.state || row.requirement.state === venueFilters.state) &&
+    (!venueFilters.recordStatus || row.recordStatus === venueFilters.recordStatus) &&
+    (!venueFilters.approvalStatus || row.approvalStatus === venueFilters.approvalStatus) &&
+    (!venueFilters.workorderStatus || row.workorderStatus === venueFilters.workorderStatus)
+  );
+  const venuePageCount = Math.max(1, Math.ceil(filteredClientVenueRows.length / PAGE_SIZE));
+  const currentVenuePage = Math.min(venuePage, venuePageCount);
+  const venuePageRows = filteredClientVenueRows.slice(
+    (currentVenuePage - 1) * PAGE_SIZE,
+    currentVenuePage * PAGE_SIZE
+  );
+  const venueFilterOptions = {
+    exams: [...new Set(selectedClientVenueRows.map(row => row.requirement.examName))].sort(),
+    zones: [...new Set(selectedClientVenueRows.map(row => row.requirement.zone))].sort(),
+    states: [...new Set(selectedClientVenueRows.map(row => row.requirement.state))].sort(),
+    recordStatuses: [...new Set(selectedClientVenueRows.map(row => row.recordStatus))].sort(),
+    approvalStatuses: [...new Set(selectedClientVenueRows.map(row => row.approvalStatus))].sort(),
+    workorderStatuses: [...new Set(selectedClientVenueRows.map(row => row.workorderStatus))].sort(),
+  };
+  const updateVenueFilter = (key: keyof typeof venueFilters, value: string) => {
+    setVenueFilters(previous => ({ ...previous, [key]: value }));
+    setVenuePage(1);
+  };
 
   const fullVendor = filtered.filter(i => i.installationType === 'Full Vendor');
   const partialVendor = filtered.filter(i => i.installationType === 'Partial Vendor');
@@ -190,9 +239,11 @@ export default function OperationsDashboard() {
             ) : clientSummaries.map(summary => (
               <tr key={summary.clientName} className="border-t hover:bg-blue-50/40">
                 <td className="px-3 py-2">
-                  <button type="button" onClick={() => setSelectedClient(
-                    selectedClient === summary.clientName ? null : summary.clientName
-                  )}
+                  <button type="button" onClick={() => {
+                    setSelectedClient(selectedClient === summary.clientName ? null : summary.clientName);
+                    setVenuePage(1);
+                    setVenueFilters({ exam: '', zone: '', state: '', recordStatus: '', approvalStatus: '', workorderStatus: '' });
+                  }}
                     className="font-semibold text-blue-700 hover:underline">
                     {summary.clientName}
                   </button>
@@ -214,7 +265,10 @@ export default function OperationsDashboard() {
         <div className="mb-6 space-y-4">
           <div className="flex items-center justify-between">
             <h2 className="text-lg font-bold text-gray-900">{selectedClient} — Exam &amp; Venue Details</h2>
-            <button type="button" onClick={() => setSelectedClient(null)}
+            <button type="button" onClick={() => {
+              setSelectedClient(null);
+              setVenuePage(1);
+            }}
               className="text-sm text-blue-600 hover:underline">Close details</button>
           </div>
 
@@ -243,33 +297,59 @@ export default function OperationsDashboard() {
 
           <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
             <div className="px-4 py-3 border-b font-semibold text-gray-800">Venue Details</div>
-            <SortableTable className="w-full text-sm">
-              <thead><tr className="bg-gray-50">
-                {['Exam','Zone','State','City','TC Code','TC Name','Record Status','Approval Status','WO Status'].map(h => (
-                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
-                ))}
-              </tr></thead>
-              <tbody>
-                {selectedClientRequirements.map(requirement => {
-                  const installation = filtered.find(item => item.requirementId === requirement.id);
-                  const approvalStatus = installation
-                    ? (installation.approvalStatus || 'pending')
-                    : 'Not created';
-                  const recordStatus = installation ? 'Created' : 'Pending';
-                  const workorderStatus = !installation
-                    ? 'Not applicable'
-                    : installation.approvalStatus === 'approved'
-                      ? installation.workOrderDownloadedAt ? 'Downloaded' : 'Pending'
-                      : 'Waiting for approval';
-                  return (
+            <div className="flex flex-wrap items-end gap-3 border-b bg-slate-50 p-4">
+              <Select label="Exam" value={venueFilters.exam} onChange={event => updateVenueFilter('exam', event.target.value)}
+                options={venueFilterOptions.exams.map(value => ({ value, label: value }))} placeholder="All exams" className="w-44" />
+              <Select label="Zone" value={venueFilters.zone} onChange={event => updateVenueFilter('zone', event.target.value)}
+                options={venueFilterOptions.zones.map(value => ({ value, label: value }))} placeholder="All zones" className="w-36" />
+              <Select label="State" value={venueFilters.state} onChange={event => updateVenueFilter('state', event.target.value)}
+                options={venueFilterOptions.states.map(value => ({ value, label: value }))} placeholder="All states" className="w-40" />
+              <Select label="Record status" value={venueFilters.recordStatus} onChange={event => updateVenueFilter('recordStatus', event.target.value)}
+                options={venueFilterOptions.recordStatuses.map(value => ({ value, label: value }))} placeholder="All record statuses" className="w-44" />
+              <Select label="Approval status" value={venueFilters.approvalStatus} onChange={event => updateVenueFilter('approvalStatus', event.target.value)}
+                options={venueFilterOptions.approvalStatuses.map(value => ({
+                  value,
+                  label: value === 'pending' ? 'Pending approval' : value,
+                }))} placeholder="All approval statuses" className="w-48" />
+              <Select label="WO status" value={venueFilters.workorderStatus} onChange={event => updateVenueFilter('workorderStatus', event.target.value)}
+                options={venueFilterOptions.workorderStatuses.map(value => ({ value, label: value }))} placeholder="All WO statuses" className="w-44" />
+              <span className="mb-0.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
+                {filteredClientVenueRows.length} venues
+              </span>
+            </div>
+            <div className="overflow-x-auto">
+              <SortableTable className="w-full table-fixed text-sm">
+                <thead><tr className="bg-gray-50">
+                  {[
+                    ['Exam', 'w-[14%]'],
+                    ['Zone', 'w-[9%]'],
+                    ['State', 'w-[11%]'],
+                    ['City', 'w-[10%]'],
+                    ['TC Code', 'w-[9%]'],
+                    ['TC Name', 'w-[19%]'],
+                    ['Record Status', 'w-[9%]'],
+                    ['Approval Status', 'w-[10%]'],
+                    ['WO Status', 'w-[9%]'],
+                  ].map(([heading, width]) => (
+                    <th key={heading} className={`px-3 py-2 text-left text-xs font-semibold text-gray-600 ${width}`}>{heading}</th>
+                  ))}
+                </tr></thead>
+                <tbody>
+                  {venuePageRows.length === 0 ? (
+                    <tr><td colSpan={9} className="px-4 py-8 text-center text-gray-400">No venues match these filters.</td></tr>
+                  ) : venuePageRows.map(({ requirement, recordStatus, approvalStatus, workorderStatus }) => (
                     <tr key={requirement.id} className="border-t hover:bg-gray-50">
-                      <td className="px-3 py-2">{requirement.examName}</td>
-                      <td className="px-3 py-2">{requirement.zone}</td>
-                      <td className="px-3 py-2">{requirement.state}</td>
-                      <td className="px-3 py-2">{requirement.city}</td>
-                      <td className="px-3 py-2 font-mono text-xs">{requirement.tcCode}</td>
-                      <td className="px-3 py-2">{requirement.tcName}</td>
-                      <td className="px-3 py-2"><Badge variant={recordStatus === 'Created' ? 'success' : 'warning'}>{recordStatus}</Badge></td>
+                      <td className="px-3 py-2 break-words">{requirement.examName}</td>
+                      <td className="px-3 py-2 break-words">{requirement.zone}</td>
+                      <td className="px-3 py-2 break-words">{requirement.state}</td>
+                      <td className="px-3 py-2 break-words">{requirement.city}</td>
+                      <td className="px-3 py-2 break-all font-mono text-xs">{requirement.tcCode}</td>
+                      <td className="max-w-0 px-3 py-2 whitespace-normal break-words [overflow-wrap:anywhere]" title={requirement.tcName}>
+                        {requirement.tcName}
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant={recordStatus === 'Created' ? 'success' : 'warning'}>{recordStatus}</Badge>
+                      </td>
                       <td className="px-3 py-2">
                         <Badge variant={
                           approvalStatus === 'approved' ? 'success'
@@ -288,10 +368,16 @@ export default function OperationsDashboard() {
                         }>{workorderStatus}</Badge>
                       </td>
                     </tr>
-                  );
-                })}
-              </tbody>
-            </SortableTable>
+                  ))}
+                </tbody>
+              </SortableTable>
+            </div>
+            <TablePagination
+              page={currentVenuePage}
+              pageSize={PAGE_SIZE}
+              totalItems={filteredClientVenueRows.length}
+              onPageChange={setVenuePage}
+            />
           </div>
         </div>
       )}
