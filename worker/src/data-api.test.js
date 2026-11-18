@@ -388,4 +388,73 @@ describe('secure GitHub data API', () => {
     const response = await handleDataApi(request('/api/data'), env, origin, [origin]);
     expect(response.status).toBe(401);
   });
+
+  it('reads large private database files through GitHub raw content', async () => {
+    const user = {
+      id: 'admin-1',
+      name: 'Test Admin',
+      email: 'admin@example.com',
+      role: 'super_admin',
+      passwordHash: await dataApiInternals.derivePasswordHash('Correct horse battery staple!'),
+      tokenVersion: 0,
+    };
+    const database = {
+      ...emptyDatabase(),
+      authVersion: 1,
+      users: [user],
+      requirements: [{ id: 'large-requirement', description: 'x'.repeat(9_000_000) }],
+    };
+    const rawContent = JSON.stringify(database);
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        sha: 'large-file-sha',
+        content: '',
+        download_url: 'https://raw.example/db.json',
+      }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(rawContent, { status: 200 }));
+
+    const response = await handleDataApi(
+      request('/api/auth/session'),
+      env,
+      origin,
+      [origin]
+    );
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    expect(fetchMock.mock.calls[1][0]).toBe('https://raw.example/db.json');
+    expect(fetchMock.mock.calls[1][1]?.headers).toMatchObject({
+      Accept: 'application/vnd.github.raw',
+      Authorization: `Bearer ${env.DATA_PAT}`,
+    });
+  });
+
+  it('saves data larger than the previous request and database size limits', async () => {
+    const user = {
+      id: 'admin-1',
+      name: 'Test Admin',
+      email: 'admin@example.com',
+      role: 'super_admin',
+      passwordHash: await dataApiInternals.derivePasswordHash('Correct horse battery staple!'),
+      tokenVersion: 0,
+    };
+    const database = { ...emptyDatabase(), authVersion: 1, users: [user] };
+    const { savedPayloads } = createGitHubMock(database);
+    const token = await dataApiInternals.createSession(user, env);
+    const response = await handleDataApi(
+      request('/api/data', 'PUT', {
+        data: {
+          ...emptyDatabase(),
+          users: [{ ...user, passwordHash: undefined }],
+          requirements: [{ id: 'large-requirement', description: 'x'.repeat(14_000_000) }],
+        },
+      }, token),
+      env,
+      origin,
+      [origin]
+    );
+
+    expect(response.status).toBe(200);
+    expect(savedPayloads.at(-1).requirements[0].description).toHaveLength(14_000_000);
+  });
 });
