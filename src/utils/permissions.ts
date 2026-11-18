@@ -64,6 +64,14 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     ],
   },
   {
+    id: 'observations',
+    label: 'Post-exam observations',
+    options: [
+      { key: 'page:post-exam-observations', label: 'View post-exam observations', description: 'Browse exam dates and add venue observations' },
+      { key: 'observations:create', label: 'Add post-exam observations', description: 'Post comments for a venue and exam date' },
+    ],
+  },
+  {
     id: 'other',
     label: 'Other workspace areas',
     options: [
@@ -78,7 +86,7 @@ export const ALL_PERMISSION_KEYS = PERMISSION_OPTIONS.map(option => option.key);
 export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: [...ALL_PERMISSION_KEYS],
   sub_admin: ALL_PERMISSION_KEYS.filter(key =>
-    !['page:users', 'requirements:delete', 'vendors:delete'].includes(key)
+    !['page:users', 'requirements:delete', 'vendors:delete', 'page:post-exam-observations', 'observations:create'].includes(key)
   ),
   user: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
@@ -96,6 +104,7 @@ export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   ],
   surveillance_head: ['page:approvals', 'approvals:surveillance'],
   enablement_head: ['page:approvals', 'approvals:enablement'],
+  backend_user: ['page:post-exam-observations', 'observations:create'],
 };
 
 export function userAssignedZones(role: { allZones: boolean; zones: string[] }, groups: Array<{ allZones: boolean; zones: string[] }>): {

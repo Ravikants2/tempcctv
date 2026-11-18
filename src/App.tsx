@@ -20,6 +20,7 @@ import ApprovalAlertCriteriaPage from './pages/users/ApprovalAlertCriteriaPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
 import WorkorderPage from './pages/workorders/WorkorderPage';
 import InstallationStatusPage from './pages/installations/InstallationStatusPage';
+import PostExamObservationPage from './pages/observations/PostExamObservationPage';
 
 function WorkspaceLoading() {
   return (
@@ -85,6 +86,7 @@ function AppRoutes() {
     ? [
         ['/dashboard/executive', 'page:dashboard.executive'],
         ['/approvals', 'page:approvals'],
+        ['/post-exam-observations', 'page:post-exam-observations'],
         ['/requirements', 'page:requirements'],
         ['/records', 'page:records'],
         ['/workorders', 'page:workorders'],
@@ -107,6 +109,7 @@ function AppRoutes() {
       <Route path="/workorders"           element={<ProtectedRoute zonalAllowed permission="page:workorders"><WorkorderPage /></ProtectedRoute>} />
       <Route path="/installation-status"  element={<ProtectedRoute zonalAllowed permission="page:installation-status"><InstallationStatusPage /></ProtectedRoute>} />
       <Route path="/approvals"            element={<ProtectedRoute approvalAllowed permission="page:approvals"><ApprovalsPage /></ProtectedRoute>} />
+      <Route path="/post-exam-observations" element={<ProtectedRoute permission="page:post-exam-observations"><PostExamObservationPage /></ProtectedRoute>} />
       <Route path="/users"                element={<ProtectedRoute permission="manage_users"><UserManagementPage /></ProtectedRoute>} />
       <Route path="/approval-alert-criteria" element={<ProtectedRoute permission="manage_users"><ApprovalAlertCriteriaPage /></ProtectedRoute>} />
       <Route path="/installation/new"     element={<ProtectedRoute zonalAllowed permission="records:create"><InstallationFormPage /></ProtectedRoute>} />

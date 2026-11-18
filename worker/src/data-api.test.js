@@ -19,6 +19,7 @@ function emptyDatabase() {
     vendors: [],
     installations: [],
     examDates: [],
+    postExamObservations: [],
     quotations: [],
     quoteRevisions: [],
     approvalEvents: [],
@@ -275,6 +276,14 @@ describe('secure GitHub data API', () => {
           ...emptyDatabase(),
           users: [{ ...user, passwordHash: undefined }],
           requirements: [{ id: 'requirement-1', zone: 'North' }],
+          postExamObservations: [{
+            id: 'observation-1',
+            installationRecordId: 'installation-1',
+            examDate: '2026-02-01',
+            comment: 'Post-exam review completed.',
+            createdBy: user.id,
+            createdAt: '2026-02-02T10:00:00.000Z',
+          }],
         },
       }, token),
       env,
@@ -285,11 +294,18 @@ describe('secure GitHub data API', () => {
     expect(response.status).toBe(200);
     expect(savedPayloads.at(-1).authVersion).toBe(1);
     expect(savedPayloads.at(-1).users[0].passwordHash).toBe(passwordHash);
+    expect(savedPayloads.at(-1).postExamObservations).toHaveLength(1);
     expect(savedPayloads.at(-1).auditLogs).toEqual(expect.arrayContaining([
       expect.objectContaining({
         action: 'CREATE',
         entityType: 'RequirementMaster',
         entityId: 'requirement-1',
+        userId: user.id,
+      }),
+      expect.objectContaining({
+        action: 'CREATE',
+        entityType: 'PostExamObservation',
+        entityId: 'observation-1',
         userId: user.id,
       }),
     ]));
@@ -321,7 +337,7 @@ describe('secure GitHub data API', () => {
           id: 'user-2',
           name: 'Managed User',
           email: 'managed@example.com',
-          role: 'user',
+          role: 'backend_user',
           groupIds: [],
         },
         password: 'initial-user-password',
@@ -332,6 +348,7 @@ describe('secure GitHub data API', () => {
     );
     const created = await createResponse.json();
     expect(createResponse.status).toBe(201);
+    expect(created.user.role).toBe('backend_user');
     expect(created.user).not.toHaveProperty('passwordHash');
 
     const oldSession = await dataApiInternals.createSession(database.users.find((user) => user.id === 'user-2'), env);

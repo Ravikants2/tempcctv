@@ -22,6 +22,7 @@ const navItems = [
   { to: '/records',              label: 'Records',             icon: ClipboardList,   permission: 'page:records' },
   { to: '/workorders',           label: 'Workorder',           icon: ClipboardCheck,  permission: 'page:workorders' },
   { to: '/installation-status',  label: 'Temp. CCTV intallation status', icon: Activity, permission: 'page:installation-status' },
+  { to: '/post-exam-observations', label: 'Post exam Observation', icon: ClipboardList, permission: 'page:post-exam-observations' },
   { to: '/approvals',            label: 'Approvals',           icon: CheckCircle2,    permission: 'page:approvals' },
   { to: '/users',                label: 'User Management',     icon: UserCog,         permission: 'manage_users' },
   { to: '/approval-alert-criteria', label: 'Approval Alert Criteria', icon: BellRing, permission: 'manage_users' },

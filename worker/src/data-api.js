@@ -11,6 +11,7 @@ const COLLECTIONS = {
   vendors: 'VendorMaster',
   installations: 'InstallationRecord',
   examDates: 'ExamDateDetail',
+  postExamObservations: 'PostExamObservation',
   quotations: 'QuotationFile',
   quoteRevisions: 'QuoteRevision',
   approvalEvents: 'InstallationApproval',
@@ -48,6 +49,7 @@ function emptyDatabase() {
     vendors: [],
     installations: [],
     examDates: [],
+    postExamObservations: [],
     quotations: [],
     quoteRevisions: [],
     approvalEvents: [],
@@ -566,7 +568,7 @@ async function handleApiRoute(request, env, origin) {
     }
     const email = userInput.email.trim().toLowerCase();
     const allowedRoles = new Set([
-      'super_admin', 'sub_admin', 'user', 'viewer', 'zonal_user',
+      'super_admin', 'sub_admin', 'user', 'viewer', 'zonal_user', 'backend_user',
       'surveillance_head', 'enablement_head', 'custom',
     ]);
     if (!userInput.name.trim() || userInput.name.length > 120

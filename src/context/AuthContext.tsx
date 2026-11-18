@@ -73,6 +73,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       vendors: data.vendors.filter(vendor => zonePolicy.zones.includes(vendor.zone)),
       installations,
       examDates: data.examDates.filter(date => installationIds.has(date.installationRecordId)),
+      postExamObservations: data.postExamObservations.filter(observation =>
+        installationIds.has(observation.installationRecordId)
+      ),
       quotations: data.quotations.filter(quotation => installationIds.has(quotation.installationRecordId)),
       quoteRevisions: data.quoteRevisions.filter(revision => installationIds.has(revision.installationRecordId)),
       approvalEvents: data.approvalEvents.filter(event => installationIds.has(event.installationRecordId)),

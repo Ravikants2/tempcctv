@@ -35,10 +35,20 @@ describe('built-in least-privilege policies', () => {
       'page:installation-status', 'records:create', 'records:edit',
     ]);
   });
+
+  it('limits backend users to posting post-exam observations', () => {
+    expect(BUILT_IN_ROLE_PERMISSIONS.backend_user).toEqual([
+      'page:post-exam-observations',
+      'observations:create',
+    ]);
+    expect(BUILT_IN_ROLE_PERMISSIONS.backend_user).not.toContain('page:records');
+    expect(BUILT_IN_ROLE_PERMISSIONS.sub_admin).not.toContain('observations:create');
+  });
 });
 
 describe('normalizeAppData', () => {
   it('defaults approval alert criteria to seven days and rejects invalid values', () => {
+    expect(normalizeAppData({}).postExamObservations).toEqual([]);
     expect(normalizeAppData({}).approvalAlertCriteria).toEqual({
       approvalDaysBeforeExam: 7,
       quotationDaysBeforeExam: 7,

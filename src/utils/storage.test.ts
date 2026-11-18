@@ -100,4 +100,19 @@ describe('Cloudflare Worker API client', () => {
       tempCctvInstallationDeclaration: 'Installation confirmed.',
     });
   });
+
+  it('preserves post-exam observations when normalizing saved application data', async () => {
+    const { normalizeAppData } = await import('./storage');
+    const observation = {
+      id: 'observation-1',
+      installationRecordId: 'installation-1',
+      examDate: '2026-02-01',
+      comment: 'Post-exam review completed.',
+      createdBy: 'backend-1',
+      createdAt: '2026-02-02T10:00:00.000Z',
+    };
+
+    expect(normalizeAppData({ postExamObservations: [observation] }).postExamObservations)
+      .toEqual([observation]);
+  });
 });

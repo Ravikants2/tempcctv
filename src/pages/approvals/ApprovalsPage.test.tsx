@@ -31,6 +31,7 @@ const initialData: AppData = {
     id: 'date-1', installationRecordId: 'installation-1',
     examDate: '2026-02-01', scheduledCandidates: 500,
   }],
+  postExamObservations: [],
   quotations: [],
   quoteRevisions: [
     {
@@ -231,6 +232,26 @@ describe('ApprovalsPage', () => {
       remarks: '',
       exception: undefined,
     });
+  });
+
+  it('shows post-exam comments on approval cards', () => {
+    const data: AppData = {
+      ...initialData,
+      postExamObservations: [{
+        id: 'observation-1',
+        installationRecordId: 'installation-1',
+        examDate: '2026-02-01',
+        comment: 'Post-exam venue check completed.',
+        createdBy: 'user-1',
+        createdAt: '2026-02-02T10:00:00.000Z',
+      }],
+    };
+    mockData = data;
+    mockAuthData(data);
+
+    render(<ApprovalsPage />);
+
+    expect(screen.getByText('Post-exam venue check completed.')).toBeInTheDocument();
   });
 
   it('approves one venue at a time and requires remarks for cost discrepancies', () => {

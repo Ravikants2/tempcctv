@@ -12,6 +12,7 @@ import { TablePagination } from '../../components/ui/TablePagination';
 import { CostValue } from '../../components/ui/CostValue';
 import { daysUntilExam, normalizeExamDate } from '../../utils/dates';
 import { getPreviousVenueQuote, getVenueCostHistory } from '../../utils/venueCosts';
+import { PostExamObservationHistory } from '../../components/observations/PostExamObservationHistory';
 
 const PAGE_SIZE = 10;
 
@@ -327,14 +328,14 @@ export default function RecordsPage() {
         <SortableTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
-              {['S No','Zone','State','City','TC Code','TC Name','Exam Days','Candidates','Vendor','Cost (Excl. Tax)','Approval','Quotation','Actions'].map(h => (
+              {['S No','Zone','State','City','TC Code','TC Name','Exam Days','Candidates','Vendor','Cost (Excl. Tax)','Approval','Quotation','Post-exam observations','Actions'].map(h => (
                 <th key={h} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
               ))}
             </tr>
           </thead>
           <tbody>
             {filtered.length === 0 ? (
-              <tr><td colSpan={13} className="px-4 py-8 text-center text-gray-400">No records found.</td></tr>
+              <tr><td colSpan={14} className="px-4 py-8 text-center text-gray-400">No records found.</td></tr>
             ) : pageRows.map((inst, idx) => {
               const req = scopedRequirements.find(r => r.id === inst.requirementId);
               const vendor = data.vendors.find(v => v.id === inst.vendorId);
@@ -382,6 +383,13 @@ export default function RecordsPage() {
                         <Eye size={12} /> View
                       </Button>
                     ) : <span className="text-gray-400 text-xs">—</span>}
+                  </td>
+                  <td className="px-3 py-3">
+                    <PostExamObservationHistory
+                      installationRecordId={inst.id}
+                      observations={data.postExamObservations}
+                      users={data.users}
+                    />
                   </td>
                   <td className="px-3 py-3">
                     <div className="flex gap-1">

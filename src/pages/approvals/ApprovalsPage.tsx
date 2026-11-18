@@ -4,6 +4,7 @@ import { Alert, KPICard, Modal } from '../../components/ui/index';
 import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { TablePagination } from '../../components/ui/TablePagination';
+import { PostExamObservationHistory } from '../../components/observations/PostExamObservationHistory';
 import { useAuth } from '../../context/AuthContext';
 import { daysUntilExam, formatExamDate, normalizeExamDate } from '../../utils/dates';
 import { exportApprovalsToExcel } from '../../utils/excel';
@@ -91,6 +92,12 @@ export default function ApprovalsPage() {
       dates.push(schedule);
       schedulesByRecord.set(schedule.installationRecordId, dates);
     });
+    const observationsByRecord = new Map<string, typeof data.postExamObservations>();
+    data.postExamObservations.forEach(observation => {
+      const observations = observationsByRecord.get(observation.installationRecordId) || [];
+      observations.push(observation);
+      observationsByRecord.set(observation.installationRecordId, observations);
+    });
     const installationsById = new Map(data.installations.map(record => [record.id, record]));
     const approvalEventsByRecord = new Map<string, ApprovalEvent[]>();
     data.approvalEvents.forEach(event => {
@@ -117,7 +124,7 @@ export default function ApprovalsPage() {
       const previousQuote = getPreviousVenueQuote(history, record.id, revisions[revisions.length - 1]?.id);
       if (previousQuote) previousQuoteCostByRecord.set(record.id, previousQuote.cost);
     });
-    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, candidatesByRecord, previousQuoteCostByRecord, installationsById, approvalEventsByRecord };
+    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, observationsByRecord, candidatesByRecord, previousQuoteCostByRecord, installationsById, approvalEventsByRecord };
   }, [data]);
 
   const allowedStages: ApprovalStage[] = [
@@ -825,6 +832,16 @@ export default function ApprovalsPage() {
                       <p className="mt-0.5 break-words text-xs leading-snug text-slate-800 xl:mt-0">
                         {examDates.length > 0 ? examDates.map(formatExamDate).join(', ') : 'Not recorded'}
                       </p>
+                    </div>
+                    <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-full">
+                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
+                        Post-exam observations
+                      </p>
+                      <PostExamObservationHistory
+                        installationRecordId={record.id}
+                        observations={indexes.observationsByRecord.get(record.id) || []}
+                        users={data.users}
+                      />
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Vendor</p>

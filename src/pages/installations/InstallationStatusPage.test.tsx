@@ -33,6 +33,7 @@ const initialData: AppData = {
     approvalStatus: 'approved', workOrderDownloadedAt: '2026-01-03T00:00:00.000Z',
   }],
   examDates: [],
+  postExamObservations: [],
   quotations: [],
   quoteRevisions: [],
   approvalEvents: [],

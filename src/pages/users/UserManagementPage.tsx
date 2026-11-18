@@ -17,6 +17,7 @@ const roleOptions = [
   { value: 'user', label: 'User' },
   { value: 'viewer', label: 'Viewer' },
   { value: 'zonal_user', label: 'Zonal User' },
+  { value: 'backend_user', label: 'Backend User' },
   { value: 'surveillance_head', label: 'Surveillance Head' },
   { value: 'enablement_head', label: 'Head of Enablement' },
   { value: 'custom', label: 'Custom access role' },

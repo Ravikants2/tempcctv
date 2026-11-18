@@ -1,6 +1,6 @@
 export type ApprovalStage = 'surveillance_head' | 'enablement_head';
 export type ApprovalStatus = 'pending' | 'returned' | 'approved';
-export type Role = 'super_admin' | 'sub_admin' | 'user' | 'viewer' | 'zonal_user' | ApprovalStage | 'custom';
+export type Role = 'super_admin' | 'sub_admin' | 'user' | 'viewer' | 'zonal_user' | 'backend_user' | ApprovalStage | 'custom';
 
 export const ZONES = [
   'East 1', 'East 2', 'North 1', 'North 2', 'North 3', 'North 4',
@@ -160,6 +160,15 @@ export interface ExamDateDetail {
   scheduledCandidates: number;
 }
 
+export interface PostExamObservation {
+  id: string;
+  installationRecordId: string;
+  examDate: string;
+  comment: string;
+  createdBy: string;
+  createdAt: string;
+}
+
 export interface QuotationFile {
   id: string;
   installationRecordId: string;
@@ -189,6 +198,7 @@ export interface AppData {
   vendors: VendorMaster[];
   installations: InstallationRecord[];
   examDates: ExamDateDetail[];
+  postExamObservations: PostExamObservation[];
   quotations: QuotationFile[];
   quoteRevisions: QuoteRevision[];
   approvalEvents: ApprovalEvent[];
