@@ -31,7 +31,7 @@ function statusFor(record: InstallationRecord, examDates: string[]): Installatio
 }
 
 export default function InstallationStatusPage() {
-  const { data, currentUser, updateData } = useAuth();
+  const { data, currentUser, updateData, can } = useAuth();
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all');
   const [clientFilter, setClientFilter] = useState('');
@@ -44,7 +44,7 @@ export default function InstallationStatusPage() {
   const [installationDate, setInstallationDate] = useState(new Date().toISOString().slice(0, 10));
   const [declarationAccepted, setDeclarationAccepted] = useState(false);
   const [completionAlert, setCompletionAlert] = useState('');
-  const isZonalUser = currentUser?.role === 'zonal_user';
+  const canCompleteInstallation = can('records:edit');
 
   const scopedRequirements = data.requirements.filter(requirement =>
     currentUser?.role !== 'zonal_user' || requirement.zone === currentUser.zone
@@ -99,8 +99,9 @@ export default function InstallationStatusPage() {
   };
 
   const completeInstallations = () => {
-    if (!isZonalUser) return;
-    if (!installationDate || !declarationAccepted || completionRecordIds.length === 0) {
+    const today = new Date().toISOString().slice(0, 10);
+    if (!canCompleteInstallation) return;
+    if (!installationDate || installationDate > today || !declarationAccepted || completionRecordIds.length === 0) {
       setCompletionAlert('Enter the installation date and confirm the declaration to continue.');
       return;
     }
@@ -197,7 +198,7 @@ export default function InstallationStatusPage() {
           <span className="mb-0.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             {filtered.length} records
           </span>
-          {isZonalUser && (
+          {canCompleteInstallation && (
             <Button disabled={selectedIds.size === 0} onClick={() => beginCompletion([...selectedIds])}>
               <CheckCircle size={14} /> Mark selected installed ({selectedIds.size})
             </Button>
@@ -212,9 +213,9 @@ export default function InstallationStatusPage() {
           <SortableTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                {(isZonalUser ? ['Select', 'S No'] : ['S No']).concat(
-                  ['Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Exam Dates', 'Cameras', 'Workorder Downloaded', 'Installation Date', 'Status'],
-                  isZonalUser ? ['Actions'] : []
+                {(canCompleteInstallation ? ['Select', 'S No'] : ['S No']).concat(
+                  ['Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Exam Dates', 'Cameras', 'Workorder Downloaded', 'Installation Date', 'Declaration', 'Status'],
+                  canCompleteInstallation ? ['Actions'] : []
                 ).map(heading =>
                   <th key={heading} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">
                     {heading === 'Select' ? (
@@ -235,10 +236,10 @@ export default function InstallationStatusPage() {
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
-                <tr><td colSpan={isZonalUser ? 13 : 11} className="px-4 py-8 text-center text-slate-400">No downloaded workorders found.</td></tr>
+                <tr><td colSpan={canCompleteInstallation ? 14 : 12} className="px-4 py-8 text-center text-slate-400">No downloaded workorders found.</td></tr>
               ) : pageRows.map(({ record, requirement, examDates, status }, index) => (
                 <tr key={record.id} className="border-t border-slate-100 hover:bg-blue-50/40">
-                  {isZonalUser && (
+                  {canCompleteInstallation && (
                     <td className="px-3 py-3">
                       {!record.tempCctvInstalledAt && (
                         <input type="checkbox" checked={selectedIds.has(record.id)}
@@ -264,10 +265,13 @@ export default function InstallationStatusPage() {
                     ? new Date(record.workOrderDownloadedAt).toLocaleString('en-IN')
                     : '—'}</td>
                   <td className="px-3 py-3">{record.tempCctvInstalledAt || '—'}</td>
+                  <td className="px-3 py-3" title={record.tempCctvInstallationDeclaration}>
+                    {record.tempCctvInstallationDeclaredAt ? 'Confirmed' : '—'}
+                  </td>
                   <td className="px-3 py-3">
                     <span className={`whitespace-nowrap rounded-full px-2.5 py-1 text-xs font-semibold ${badgeClass(status)}`}>{status}</span>
                   </td>
-                  {isZonalUser && (
+                  {canCompleteInstallation && (
                     <td className="px-3 py-3">
                       {!record.tempCctvInstalledAt && (
                         <Button variant="outline" size="sm" onClick={() => beginCompletion([record.id])}>
