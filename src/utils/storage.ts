@@ -102,6 +102,19 @@ function apiError(message: string, status: number): Error & { status: number } {
   return Object.assign(new Error(message), { status });
 }
 
+function isRetryableRequest(path: string, method: string): boolean {
+  return method === 'GET' || path === '/api/auth/login';
+}
+
+function isRetryableStatus(status: number): boolean {
+  return status === 500 || status === 502 || status === 503 || status === 504
+    || (status >= 520 && status <= 526);
+}
+
+function wait(milliseconds: number): Promise<void> {
+  return new Promise(resolve => globalThis.setTimeout(resolve, milliseconds));
+}
+
 async function apiRequest<T>(
   path: string,
   options: RequestInit = {},
@@ -113,7 +126,22 @@ async function apiRequest<T>(
   const token = includeSession ? getSessionToken() : '';
   if (token) headers.set('Authorization', `Bearer ${token}`);
 
-  const response = await fetch(`${API_ENDPOINT}${path}`, { ...options, headers });
+  const method = (options.method || 'GET').toUpperCase();
+  const canRetry = isRetryableRequest(path, method);
+  let response: Response | undefined;
+  for (let attempt = 0; attempt < (canRetry ? 3 : 1); attempt += 1) {
+    try {
+      response = await fetch(`${API_ENDPOINT}${path}`, { ...options, headers });
+    } catch (error) {
+      if (!canRetry || attempt === 2 || !(error instanceof TypeError)) throw error;
+      await wait(250 * (attempt + 1));
+      continue;
+    }
+
+    if (!canRetry || !isRetryableStatus(response.status) || attempt === 2) break;
+    await wait(250 * (attempt + 1));
+  }
+  if (!response) throw new Error('The secure service did not return a response.');
   const result = await response.json().catch(() => ({})) as { error?: string } & T;
   if (!response.ok) {
     if (response.status === 401 && includeSession) sessionStorage.removeItem(SESSION_KEY);

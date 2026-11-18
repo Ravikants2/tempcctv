@@ -36,6 +36,22 @@ describe('Cloudflare Worker API client', () => {
     expect(localStorage.length).toBe(0);
   });
 
+  it('retries a transient network failure during sign-in', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockRejectedValueOnce(new TypeError('Failed to fetch'))
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        token: 'signed-app-session',
+        user: { id: 'admin-1', email: 'admin@example.com', name: 'Admin', role: 'super_admin' },
+        data: { users: [] },
+      }), { status: 200 }));
+    const { loginUser } = await import('./storage');
+
+    await expect(loginUser('admin@example.com', 'app-password')).resolves.toMatchObject({
+      user: { id: 'admin-1' },
+    });
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('attaches the app session to authenticated API calls and clears it on logout', async () => {
     sessionStorage.setItem('ion_session', 'signed-app-session');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>

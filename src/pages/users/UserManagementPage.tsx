@@ -44,24 +44,21 @@ function summarizeAuditEntry(entry: AppData['auditLogs'][number]): string {
 }
 
 function UserActivity({ data }: { data: AppData }) {
-  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1_000;
   const recent = data.auditLogs
     .filter(entry => Number.isFinite(Date.parse(entry.timestamp)))
     .sort((left, right) => Date.parse(right.timestamp) - Date.parse(left.timestamp))
     .slice(0, 200);
   const userNames = new Map(data.users.map(user => [user.id, user.name]));
   const logins = recent.filter(entry => entry.action === 'LOGIN');
-  const activeUsers = new Set(logins
-    .filter(entry => Date.parse(entry.timestamp) >= sevenDaysAgo)
-    .map(entry => entry.userId)).size;
+  const changes = recent.filter(entry => entry.action !== 'LOGIN' && entry.action !== 'LOGOUT');
 
   return (
     <section className="space-y-4">
       <div className="grid gap-3 sm:grid-cols-3">
         {[
           ['Users', data.users.length],
-          ['Sign-ins (recent 200 events)', logins.length],
-          ['Users active in 7 days', activeUsers],
+          ['Recorded sign-ins (latest 200 events)', logins.length],
+          ['Recorded changes (latest 200 events)', changes.length],
         ].map(([label, value]) => (
           <article key={label} className="rounded-xl border bg-white p-4 shadow-sm">
             <p className="text-xs font-medium text-slate-500">{label}</p>
@@ -73,9 +70,12 @@ function UserActivity({ data }: { data: AppData }) {
       <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <div className="flex items-center gap-2 border-b px-4 py-3">
           <Activity size={16} className="text-blue-600" />
-          <h2 className="font-semibold text-slate-900">Recent sign-ins and changes</h2>
+          <h2 className="font-semibold text-slate-900">Recorded sign-ins and changes</h2>
           <span className="ml-auto text-xs text-slate-500">Newest 200 events</span>
         </div>
+        <p className="border-b px-4 py-2 text-xs text-slate-500">
+          New sign-ins are not recorded; existing sign-in entries and timestamps are historical.
+        </p>
         {recent.length === 0 ? (
           <p className="p-6 text-center text-sm text-slate-500">No user activity has been recorded yet.</p>
         ) : (
@@ -453,7 +453,7 @@ export default function UserManagementPage() {
       {accessTab === 'users' && <div className="overflow-x-auto rounded-xl border bg-white shadow-sm">
         <SortableTable className="w-full text-sm">
           <thead><tr className="border-b bg-gray-50">
-            {['Name', 'Email', 'Role', 'Groups', 'Last sign-in', 'Actions'].map(label => (
+            {['Name', 'Email', 'Role', 'Groups', 'Last recorded sign-in', 'Actions'].map(label => (
               <th key={label} className="px-4 py-3 text-left text-xs font-semibold uppercase text-gray-600">{label}</th>
             ))}
           </tr></thead>

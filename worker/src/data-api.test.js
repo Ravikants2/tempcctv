@@ -129,7 +129,7 @@ describe('secure GitHub data API', () => {
     expect(response.status).toBe(200);
     expect(body.user.email).toBe('admin@example.com');
     expect(body.user).not.toHaveProperty('passwordHash');
-    expect(savedPayloads).toHaveLength(2);
+    expect(savedPayloads).toHaveLength(1);
     expect(savedPayloads[0].users.find((user) => user.id === 'legacy-user').passwordHash).toBe('');
     expect(savedPayloads[0].users.find((user) => user.email === 'admin@example.com').passwordHash).toMatch(/^pbkdf2\$/);
   });
@@ -189,7 +189,7 @@ describe('secure GitHub data API', () => {
     expect(loginResponse.status).toBe(200);
     const { token } = loginBody;
     expect(loginBody.data.users[0]).not.toHaveProperty('passwordHash');
-    expect(loginBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+    expect(loginBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(false);
     expect(loginBody.data).not.toHaveProperty('authVersion');
 
     const dataResponse = await handleDataApi(
@@ -201,7 +201,7 @@ describe('secure GitHub data API', () => {
     const visibleData = await dataResponse.json();
     expect(dataResponse.status).toBe(200);
     expect(visibleData.users[0]).not.toHaveProperty('passwordHash');
-    expect(visibleData.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+    expect(visibleData.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(false);
 
     const sessionResponse = await handleDataApi(
       request('/api/auth/session', 'GET', undefined, token),
@@ -212,7 +212,58 @@ describe('secure GitHub data API', () => {
     const sessionBody = await sessionResponse.json();
     expect(sessionResponse.status).toBe(200);
     expect(sessionBody.data.users[0]).not.toHaveProperty('passwordHash');
-    expect(sessionBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(true);
+    expect(sessionBody.data.auditLogs.some((entry) => entry.action === 'LOGIN' && entry.userId === 'admin-1')).toBe(false);
+  });
+
+  it('does not rewrite the database during sign-in', async () => {
+    const password = 'Correct horse battery staple!';
+    const user = {
+      id: 'admin-1',
+      name: 'Test Admin',
+      email: 'admin@example.com',
+      role: 'super_admin',
+      passwordHash: await dataApiInternals.derivePasswordHash(password),
+      tokenVersion: 0,
+    };
+    const database = { ...emptyDatabase(), authVersion: 1, users: [user] };
+    const { fetchMock, savedPayloads } = createGitHubMock(database);
+
+    const response = await handleDataApi(
+      request('/api/auth/login', 'POST', { email: user.email, password }),
+      env,
+      origin,
+      [origin]
+    );
+
+    expect(response.status).toBe(200);
+    expect((await response.json()).user.id).toBe(user.id);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(savedPayloads).toHaveLength(0);
+  });
+
+  it('retries a transient GitHub database read error', async () => {
+    const user = {
+      id: 'admin-1',
+      name: 'Test Admin',
+      email: 'admin@example.com',
+      role: 'super_admin',
+      passwordHash: await dataApiInternals.derivePasswordHash('Correct horse battery staple!'),
+      tokenVersion: 0,
+    };
+    const database = { ...emptyDatabase(), authVersion: 1, users: [user] };
+    const fetchMock = vi.spyOn(globalThis, 'fetch')
+      .mockResolvedValueOnce(new Response('temporarily unavailable', { status: 503 }))
+      .mockResolvedValueOnce(contentResponse(database, 'existing-file-sha'));
+
+    const response = await handleDataApi(
+      request('/api/auth/login', 'POST', { email: 'missing@example.com', password: 'anything' }),
+      env,
+      origin,
+      [origin]
+    );
+
+    expect(response.status).toBe(401);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
   it('limits auth response audit logs to the signed-in non-admin user', async () => {

@@ -5,6 +5,7 @@ const MAX_REQUEST_BYTES = 18_000_000;
 const MAX_AUDIT_ENTRIES = 5_000;
 const AUTH_VERSION = 1;
 const DATA_PATH = 'db.json';
+const GITHUB_READ_RETRY_DELAYS = [150, 300];
 const COLLECTIONS = {
   users: 'User',
   requirements: 'RequirementMaster',
@@ -124,13 +125,27 @@ function githubHeaders(env, accept = 'application/vnd.github+json') {
   };
 }
 
+async function fetchGitHubRead(url, headers) {
+  for (let attempt = 0; ; attempt += 1) {
+    try {
+      const response = await fetch(url, { headers });
+      if (![500, 502, 503, 504].includes(response.status) || attempt === GITHUB_READ_RETRY_DELAYS.length) {
+        return response;
+      }
+    } catch (error) {
+      if (attempt === GITHUB_READ_RETRY_DELAYS.length) throw error;
+    }
+    await new Promise((resolve) => setTimeout(resolve, GITHUB_READ_RETRY_DELAYS[attempt]));
+  }
+}
+
 async function readDatabase(env) {
   const config = githubConfig(env);
   const url = githubUrl(
     config,
     `/contents/${DATA_PATH}?ref=${encodeURIComponent(config.branch)}`
   );
-  const response = await fetch(url, { headers: githubHeaders(env) });
+  const response = await fetchGitHubRead(url, githubHeaders(env));
 
   if (response.status === 404) {
     return { data: emptyDatabase(), sha: null, isNew: true, config };
@@ -145,7 +160,10 @@ async function readDatabase(env) {
   if (typeof file.content === 'string' && file.content.trim()) {
     content = new TextDecoder().decode(base64ToBytes(file.content.replace(/\s/g, '')));
   } else if (typeof file.download_url === 'string') {
-    const rawResponse = await fetch(file.download_url, { headers: githubHeaders(env, 'application/vnd.github.raw') });
+    const rawResponse = await fetchGitHubRead(
+      file.download_url,
+      githubHeaders(env, 'application/vnd.github.raw')
+    );
     if (!rawResponse.ok) {
       console.error('GitHub data download failed with status', rawResponse.status);
       throw new ApiError('The private GitHub database could not be downloaded.', 502);
@@ -254,6 +272,18 @@ function addAuditEntries(database, entries) {
   database.auditLogs = [...database.auditLogs, ...entries].slice(-MAX_AUDIT_ENTRIES);
 }
 
+function equalJsonValue(left, right) {
+  if (left === right) return true;
+  if (left === null || right === null || typeof left !== typeof right) return false;
+  if (typeof left !== 'object') return false;
+  const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined);
+  const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined);
+  if (leftKeys.length !== rightKeys.length) return false;
+  return leftKeys.every((key) =>
+    Object.prototype.hasOwnProperty.call(right, key) && equalJsonValue(left[key], right[key])
+  );
+}
+
 function diffAuditEntries(previous, next, actorId) {
   const entries = [];
   for (const [collection, entityType] of Object.entries(COLLECTIONS)) {
@@ -263,7 +293,7 @@ function diffAuditEntries(previous, next, actorId) {
       const before = beforeRows.get(id);
       if (!before) {
         entries.push(auditEntry(actorId, 'CREATE', entityType, id, undefined, row));
-      } else if (JSON.stringify(before) !== JSON.stringify(row)) {
+      } else if (!equalJsonValue(before, row)) {
         entries.push(auditEntry(actorId, 'UPDATE', entityType, id, before, row));
       }
     }
@@ -515,16 +545,11 @@ async function handleApiRoute(request, env, origin) {
     if (!user || !await verifyPassword(body.password, user.passwordHash)) {
       throw new ApiError('Invalid email or password.', 401);
     }
-    user.lastLoginAt = new Date().toISOString();
-    user.tokenVersion = user.tokenVersion || 0;
-    addAuditEntries(loaded.data, [
-      auditEntry(user.id, 'LOGIN', 'User', user.id, undefined, { email: user.email }),
-    ]);
-    loaded = await writeDatabase(env, loaded, loaded.data, 'auth: user sign-in');
+    const signedInUser = { ...user, tokenVersion: user.tokenVersion || 0 };
     return jsonResponse({
-      token: await createSession(user, env),
-      user: apiUser(user),
-      data: visibleDatabaseFor(user, loaded.data),
+      token: await createSession(signedInUser, env),
+      user: apiUser(signedInUser),
+      data: visibleDatabaseFor(signedInUser, loaded.data),
     }, 200, origin);
   }
 

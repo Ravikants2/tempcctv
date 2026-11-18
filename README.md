@@ -10,6 +10,8 @@ The Worker migration preserves existing user IDs and valid PBKDF2 password hashe
 
 If the private database does not contain a Super Admin with a PBKDF2 password hash, configure both `BOOTSTRAP_ADMIN_EMAIL` and `BOOTSTRAP_ADMIN_PASSWORD` as repository Actions secrets. On the first API request, the Worker creates or upgrades the account matching that email; an existing matching account keeps its ID. Use a password with at least 12 characters. These bootstrap secrets are optional once the database already has a valid Super Admin.
 
+Sign-in does not write to the database, so a GitHub save failure cannot block authentication. New sign-ins and last-sign-in timestamps are not recorded; any existing sign-in audit entries are historical.
+
 ## Configure deployment
 
 The GitHub Actions workflows publish the Worker and GitHub Pages app. Before deploying, configure the following in the public app repository under **Settings → Secrets and variables → Actions**. Never put secret values in source, workflow files, chat messages, or the private data database.
