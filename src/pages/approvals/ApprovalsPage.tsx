@@ -5,6 +5,7 @@ import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { PostExamObservationHistory } from '../../components/observations/PostExamObservationHistory';
+import { groupPostExamObservationsByTcCode, tcCodeKey } from '../../utils/postExamObservations';
 import { useAuth } from '../../context/AuthContext';
 import { daysUntilExam, formatExamDate, normalizeExamDate } from '../../utils/dates';
 import { exportApprovalsToExcel } from '../../utils/excel';
@@ -92,12 +93,12 @@ export default function ApprovalsPage() {
       dates.push(schedule);
       schedulesByRecord.set(schedule.installationRecordId, dates);
     });
-    const observationsByRecord = new Map<string, typeof data.postExamObservations>();
-    data.postExamObservations.forEach(observation => {
-      const observations = observationsByRecord.get(observation.installationRecordId) || [];
-      observations.push(observation);
-      observationsByRecord.set(observation.installationRecordId, observations);
-    });
+    const observationsByTcCode = groupPostExamObservationsByTcCode(
+      data.postExamObservations,
+      data.installations,
+      data.requirements,
+      data.vendors
+    );
     const installationsById = new Map(data.installations.map(record => [record.id, record]));
     const approvalEventsByRecord = new Map<string, ApprovalEvent[]>();
     data.approvalEvents.forEach(event => {
@@ -124,7 +125,7 @@ export default function ApprovalsPage() {
       const previousQuote = getPreviousVenueQuote(history, record.id, revisions[revisions.length - 1]?.id);
       if (previousQuote) previousQuoteCostByRecord.set(record.id, previousQuote.cost);
     });
-    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, observationsByRecord, candidatesByRecord, previousQuoteCostByRecord, installationsById, approvalEventsByRecord };
+    return { requirementsById, vendorsById, revisionsByRecord, schedulesByRecord, observationsByTcCode, candidatesByRecord, previousQuoteCostByRecord, installationsById, approvalEventsByRecord };
   }, [data]);
 
   const allowedStages: ApprovalStage[] = [
@@ -834,19 +835,9 @@ export default function ApprovalsPage() {
                       <div className="mt-1 flex items-center gap-1">
                         <span className="text-[9px] font-medium text-slate-500">Obs.</span>
                       <PostExamObservationHistory
-                        installationRecordId={record.id}
-                        observations={indexes.observationsByRecord.get(record.id) || []}
-                        users={data.users}
-                        clientName={requirement.clientName}
-                        examName={requirement.examName}
-                        examDates={examDates}
                         tcCode={requirement.tcCode}
-                        tcName={requirement.tcName}
-                        zone={requirement.zone}
-                        state={requirement.state}
-                        city={requirement.city}
-                        vendor={indexes.vendorsById.get(record.vendorId)}
-                        installationType={record.installationType}
+                        entries={indexes.observationsByTcCode.get(tcCodeKey(requirement.tcCode)) || []}
+                        users={data.users}
                       />
                       </div>
                     </div>

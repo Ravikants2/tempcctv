@@ -1,54 +1,64 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { describe, expect, it } from 'vitest';
-import type { PostExamObservation } from '../../types';
+import type { PostExamObservationEntry } from '../../utils/postExamObservations';
 import { PostExamObservationHistory } from './PostExamObservationHistory';
 
-const observations: PostExamObservation[] = [
+const entries: PostExamObservationEntry[] = [
   {
-    id: 'observation-1', installationRecordId: 'installation-1', examDate: '2026-02-01',
-    comment: 'Oldest observation', createdBy: 'user-1', createdAt: '2026-02-02T10:00:00.000Z',
+    observation: {
+      id: 'observation-1', installationRecordId: 'installation-1', examDate: '2026-02-01',
+      comment: 'Oldest observation', createdBy: 'user-1', createdAt: '2026-02-02T10:00:00.000Z',
+    },
+    clientName: 'Client A', examName: 'Exam A', tcCode: 'TC-100', tcName: 'Test Venue',
+    zone: 'East 1', state: 'State A', city: 'City A',
+    vendor: { id: 'vendor-1', vendorCode: 'V-1', zone: 'East 1', vendorName: 'Test Vendor', createdBy: 'user-1', createdAt: '', updatedAt: '' },
+    installationType: 'Full Vendor',
   },
   {
-    id: 'observation-2', installationRecordId: 'installation-1', examDate: '2026-02-01',
-    comment: 'Middle observation', createdBy: 'user-1', createdAt: '2026-02-03T10:00:00.000Z',
+    observation: {
+      id: 'observation-2', installationRecordId: 'installation-1', examDate: '2026-02-01',
+      comment: 'Middle observation', createdBy: 'user-1', createdAt: '2026-02-03T10:00:00.000Z',
+    },
+    clientName: 'Client A', examName: 'Exam A', tcCode: 'TC-100', tcName: 'Test Venue',
+    zone: 'East 1', state: 'State A', city: 'City A',
+    vendor: { id: 'vendor-1', vendorCode: 'V-1', zone: 'East 1', vendorName: 'Test Vendor', createdBy: 'user-1', createdAt: '', updatedAt: '' },
+    installationType: 'Full Vendor',
   },
   {
-    id: 'observation-3', installationRecordId: 'installation-1', examDate: '2026-02-01',
-    comment: 'Newest observation', createdBy: 'user-1', createdAt: '2026-02-04T10:00:00.000Z',
+    observation: {
+      id: 'observation-3', installationRecordId: 'installation-2', examDate: '2026-03-01',
+      comment: 'Newest observation', createdBy: 'user-1', createdAt: '2026-02-04T10:00:00.000Z',
+    },
+    clientName: 'Client B', examName: 'Exam B', tcCode: 'TC-100', tcName: 'Test Venue',
+    zone: 'West 1', state: 'State B', city: 'City B',
+    vendor: { id: 'vendor-2', vendorCode: 'V-2', zone: 'West 1', vendorName: 'Other Vendor', createdBy: 'user-1', createdAt: '', updatedAt: '' },
+    installationType: 'Partial Vendor',
   },
 ];
 
 describe('PostExamObservationHistory', () => {
-  it('shows the two newest comments first and paginates older comments', () => {
+  it('shows all projects for a TC code and paginates two newest comments at a time', () => {
     render(<PostExamObservationHistory
-      installationRecordId="installation-1"
-      observations={observations}
-      users={[{ id: 'user-1', name: 'Backend User', email: 'backend@example.com', role: 'backend_user' }]}
-      clientName="Client"
-      examName="Exam"
-      examDates={['2026-02-01']}
       tcCode="TC-100"
-      tcName="Test Venue"
-      zone="East 1"
-      state="State"
-      city="City"
-      vendor={{ id: 'vendor-1', vendorCode: 'V-1', zone: 'East 1', vendorName: 'Test Vendor', createdBy: 'user-1', createdAt: '', updatedAt: '' }}
-      installationType="Full Vendor"
+      entries={entries}
+      users={[{ id: 'user-1', name: 'Backend User', email: 'backend@example.com', role: 'backend_user' }]}
     />);
 
-    expect(screen.getByRole('button', { name: 'View 3 post-exam observations for TC TC-100' })).toBeInTheDocument();
+    const countButton = screen.getByRole('button', { name: 'View 3 post-exam observations for TC TC-100' });
+    expect(countButton).toBeInTheDocument();
     expect(screen.queryByText('Newest observation')).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole('button', { name: 'View 3 post-exam observations for TC TC-100' }));
+    fireEvent.click(countButton);
 
-    expect(screen.getByText('Test Vendor')).toBeInTheDocument();
-    expect(screen.getByText('Exam details')).toBeInTheDocument();
-    expect(screen.getByText('Newest observation')).toBeInTheDocument();
-    expect(screen.getByText('Middle observation')).toBeInTheDocument();
-    expect(screen.queryByText('Oldest observation')).not.toBeInTheDocument();
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('Newest observation')).toBeInTheDocument();
+    expect(dialog.getByText('Middle observation')).toBeInTheDocument();
+    expect(dialog.getByText('Client B · Exam B')).toBeInTheDocument();
+    expect(dialog.getByText('Other Vendor')).toBeInTheDocument();
+    expect(dialog.queryByText('Oldest observation')).not.toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole('button', { name: 'Next page' }));
+    fireEvent.click(dialog.getByRole('button', { name: 'Next page' }));
 
-    expect(screen.getByText('Oldest observation')).toBeInTheDocument();
-    expect(screen.queryByText('Newest observation')).not.toBeInTheDocument();
+    expect(dialog.getByText('Oldest observation')).toBeInTheDocument();
+    expect(dialog.queryByText('Newest observation')).not.toBeInTheDocument();
   });
 });

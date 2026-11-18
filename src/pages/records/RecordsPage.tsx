@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { SortableTable } from '../../components/ui/SortableTable';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../context/AuthContext';
@@ -13,6 +13,7 @@ import { CostValue } from '../../components/ui/CostValue';
 import { daysUntilExam, normalizeExamDate } from '../../utils/dates';
 import { getPreviousVenueQuote, getVenueCostHistory } from '../../utils/venueCosts';
 import { PostExamObservationHistory } from '../../components/observations/PostExamObservationHistory';
+import { groupPostExamObservationsByTcCode, tcCodeKey } from '../../utils/postExamObservations';
 
 const PAGE_SIZE = 10;
 
@@ -36,6 +37,12 @@ export default function RecordsPage() {
   const scopedInstallations = data.installations.filter(inst =>
     scopedRequirements.some(requirement => requirement.id === inst.requirementId)
   );
+  const observationEntriesByTcCode = useMemo(() => groupPostExamObservationsByTcCode(
+    data.postExamObservations,
+    data.installations,
+    data.requirements,
+    data.vendors
+  ), [data.postExamObservations, data.installations, data.requirements, data.vendors]);
   const clients = [...new Set(scopedRequirements.map(r => r.clientName))].sort();
   const exams = [...new Set(scopedRequirements.filter(r => !filterClient || r.clientName === filterClient).map(r => r.examName))].sort();
   const zones = [...new Set(scopedRequirements.map(r => r.zone))].sort();
@@ -340,9 +347,6 @@ export default function RecordsPage() {
               const req = scopedRequirements.find(r => r.id === inst.requirementId);
               const vendor = data.vendors.find(v => v.id === inst.vendorId);
               const { examDays, totalCandidates } = getInstallationStats(inst, data.examDates);
-              const examDates = [...new Set(data.examDates
-                .filter(date => date.installationRecordId === inst.id)
-                .map(date => normalizeExamDate(date.examDate) || date.examDate))];
               const recordRevisions = data.quoteRevisions
                 .filter(revision => revision.installationRecordId === inst.id)
                 .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -389,19 +393,9 @@ export default function RecordsPage() {
                   </td>
                   <td className="px-3 py-3">
                     <PostExamObservationHistory
-                      installationRecordId={inst.id}
-                      observations={data.postExamObservations}
-                      users={data.users}
-                      clientName={req?.clientName || 'Client unavailable'}
-                      examName={req?.examName || 'Exam unavailable'}
-                      examDates={examDates}
                       tcCode={req?.tcCode || '—'}
-                      tcName={req?.tcName || 'Venue unavailable'}
-                      zone={req?.zone || 'Zone unavailable'}
-                      state={req?.state || 'State unavailable'}
-                      city={req?.city || 'City unavailable'}
-                      vendor={vendor}
-                      installationType={inst.installationType}
+                      entries={observationEntriesByTcCode.get(tcCodeKey(req?.tcCode || '')) || []}
+                      users={data.users}
                     />
                   </td>
                   <td className="px-3 py-3">

@@ -237,13 +237,43 @@ describe('ApprovalsPage', () => {
   it('shows post-exam comments on approval cards', () => {
     const data: AppData = {
       ...initialData,
+      requirements: [...initialData.requirements, {
+        ...initialData.requirements[0],
+        id: 'requirement-2',
+        clientName: 'Client B',
+        examName: 'Exam B',
+        tcName: 'Test Venue 2',
+        zone: 'West 1',
+        tcCode: 'TC-100',
+      }],
+      vendors: [...initialData.vendors, {
+        id: 'vendor-2', zone: 'West 1', vendorName: 'Other Vendor',
+        createdBy: 'user-1', createdAt: '2026-01-01', updatedAt: '2026-01-01',
+      }],
+      installations: [...initialData.installations, {
+        ...initialData.installations[0],
+        id: 'installation-2',
+        requirementId: 'requirement-2',
+        vendorId: 'vendor-2',
+      }],
+      examDates: [...initialData.examDates, {
+        id: 'date-2', installationRecordId: 'installation-2',
+        examDate: '2026-03-01', scheduledCandidates: 300,
+      }],
       postExamObservations: [{
         id: 'observation-1',
         installationRecordId: 'installation-1',
         examDate: '2026-02-01',
-        comment: 'Post-exam venue check completed.',
+        comment: 'Client A observation.',
         createdBy: 'user-1',
         createdAt: '2026-02-02T10:00:00.000Z',
+      }, {
+        id: 'observation-2',
+        installationRecordId: 'installation-2',
+        examDate: '2026-03-01',
+        comment: 'Client B observation.',
+        createdBy: 'user-1',
+        createdAt: '2026-03-02T10:00:00.000Z',
       }],
     };
     mockData = data;
@@ -251,9 +281,17 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
-    fireEvent.click(screen.getByRole('button', { name: 'View 1 post-exam observations for TC TC-100' }));
-    expect(screen.getByText('Post-exam venue check completed.')).toBeInTheDocument();
-    expect(within(screen.getByRole('dialog')).getByText('Test Vendor')).toBeInTheDocument();
+    const observationCounts = screen.getAllByRole('button', {
+      name: 'View 2 post-exam observations for TC TC-100',
+    });
+    expect(observationCounts).toHaveLength(2);
+    fireEvent.click(observationCounts[0]);
+    const dialog = within(screen.getByRole('dialog'));
+    expect(dialog.getByText('Client A observation.')).toBeInTheDocument();
+    expect(dialog.getByText('Client B observation.')).toBeInTheDocument();
+    expect(dialog.getByText('Client B · Exam B')).toBeInTheDocument();
+    expect(dialog.getByText('Test Vendor')).toBeInTheDocument();
+    expect(dialog.getByText('Other Vendor')).toBeInTheDocument();
   });
 
   it('keeps approval cards aligned when only some records need exception remarks', () => {
