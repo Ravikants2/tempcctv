@@ -63,4 +63,33 @@ describe('Cloudflare Worker API client', () => {
     expect(localStorage.getItem('ion_github_data_token_remembered')).toBeNull();
     expect(sessionStorage.getItem('ion_github_data_token')).toBeNull();
   });
+
+  it('preserves workorder download status and actor metadata', async () => {
+    const { normalizeAppData } = await import('./storage');
+    const downloadedAt = '2026-11-18T11:30:00.000Z';
+    const normalized = normalizeAppData({
+      installations: [{
+        id: 'installation-1',
+        requirementId: 'requirement-1',
+        installationType: 'Full Vendor',
+        vendorId: 'vendor-1',
+        cameraCount: 4,
+        proxyProvided: true,
+        internetProvided: true,
+        storageProvided: false,
+        localVendorCost: 50000,
+        createdBy: 'user-1',
+        createdAt: downloadedAt,
+        updatedBy: 'user-1',
+        updatedAt: downloadedAt,
+        workOrderDownloadedAt: downloadedAt,
+        workOrderDownloadedBy: 'user-1',
+      }],
+    });
+
+    expect(normalized.installations[0]).toMatchObject({
+      workOrderDownloadedAt: downloadedAt,
+      workOrderDownloadedBy: 'user-1',
+    });
+  });
 });

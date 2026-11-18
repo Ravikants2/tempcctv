@@ -29,6 +29,10 @@ export default function OperationsDashboard() {
 
   const withQuotation = filtered.filter(i => i.quotationFileId).length;
   const withoutQuotation = filtered.length - withQuotation;
+  const approvedFiltered = filtered.filter(i => i.approvalStatus === 'approved');
+  const workordersDownloaded = approvedFiltered.filter(i => i.workOrderDownloadedAt).length;
+  const workordersPending = approvedFiltered.length - workordersDownloaded;
+  const workorderRows = approvedFiltered;
 
   const fullVendor = filtered.filter(i => i.installationType === 'Full Vendor');
   const partialVendor = filtered.filter(i => i.installationType === 'Partial Vendor');
@@ -105,14 +109,58 @@ export default function OperationsDashboard() {
       <GlobalFilters />
       <h1 className="text-xl font-bold text-gray-900 mb-4">Operations Dashboard</h1>
 
-      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4 mb-8">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-8 gap-4 mb-8">
         <KPICard title="Required Venues" value={allReqs.length} icon={<CheckCircle size={20} />} color="blue" />
         <KPICard title="Completed" value={completion.completed.length} icon={<CheckCircle size={20} />} color="green" />
         <KPICard title="Pending" value={pending.length} icon={<Clock size={20} />} color="orange" onClick={() => setKpiDetail('pending')} />
         <KPICard title="Completion %" value={`${completionPct}%`} icon={<CheckCircle size={20} />} color="teal" />
         <KPICard title="Quotation Available" value={withQuotation} icon={<FileText size={20} />} color="green" />
         <KPICard title="Quotation Missing" value={withoutQuotation} icon={<AlertTriangle size={20} />} color="red" onClick={() => setKpiDetail('attention')} />
+        <KPICard title="Workorders Downloaded" value={workordersDownloaded} icon={<FileText size={20} />} color="green" />
+        <KPICard title="Workorders Pending" value={workordersPending} icon={<Clock size={20} />} color="orange" />
       </div>
+
+      {workorderRows.length > 0 && (
+        <div className="bg-white border rounded-xl shadow-sm overflow-x-auto mb-6">
+          <div className="px-4 py-3 border-b font-semibold text-gray-800">
+            Workorder Download Status ({workorderRows.length})
+          </div>
+          <SortableTable className="w-full text-sm">
+            <thead><tr className="bg-gray-50">
+              {['Client','Exam','Zone','City','TC Code','TC Name','Status','Downloaded On'].map(h => (
+                <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
+              ))}
+            </tr></thead>
+            <tbody>
+              {workorderRows.map(inst => {
+                const req = data.requirements.find(r => r.id === inst.requirementId);
+                return (
+                  <tr key={inst.id} className="border-t hover:bg-gray-50">
+                    <td className="px-3 py-2">{req?.clientName || '—'}</td>
+                    <td className="px-3 py-2">{req?.examName || '—'}</td>
+                    <td className="px-3 py-2">{req?.zone || '—'}</td>
+                    <td className="px-3 py-2">{req?.city || '—'}</td>
+                    <td className="px-3 py-2 font-mono text-xs">{req?.tcCode || '—'}</td>
+                    <td className="px-3 py-2">{req?.tcName || '—'}</td>
+                    <td className="px-3 py-2">
+                      {inst.workOrderDownloadedAt ? (
+                        <Badge variant="success">Downloaded</Badge>
+                      ) : (
+                        <Badge variant="warning">Not downloaded</Badge>
+                      )}
+                    </td>
+                    <td className="px-3 py-2">
+                      {inst.workOrderDownloadedAt
+                        ? new Date(inst.workOrderDownloadedAt).toLocaleString('en-IN')
+                        : '—'}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </SortableTable>
+        </div>
+      )}
 
       <div className="bg-white border rounded-xl shadow-sm overflow-x-auto mb-6">
         <div className="px-4 py-3 border-b font-semibold text-gray-800">Installation Type Comparison</div>

@@ -100,6 +100,8 @@ export interface InstallationRecord {
   updatedAt: string;
   approvalStatus?: ApprovalStatus;
   approvalStage?: ApprovalStage;
+  workOrderDownloadedAt?: string;
+  workOrderDownloadedBy?: string;
 }
 
 export interface QuoteRevision {

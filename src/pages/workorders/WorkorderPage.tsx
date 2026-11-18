@@ -6,17 +6,19 @@ import { Input, Select } from '../../components/ui/FormFields';
 import { SortableTable } from '../../components/ui/SortableTable';
 import { TablePagination } from '../../components/ui/TablePagination';
 import { getRequirementExamSchedule } from '../../utils/calculations';
-import { Eye } from 'lucide-react';
+import { Download, Eye } from 'lucide-react';
+import { printWorkordersPDF } from '../../utils/pdf';
 
 const PAGE_SIZE = 10;
 
 export default function WorkorderPage() {
-  const { data, can, currentUser } = useAuth();
+  const { data, can, currentUser, updateData, addAuditLog } = useAuth();
   const navigate = useNavigate();
   const [search, setSearch] = useState('');
   const [client, setClient] = useState('');
   const [exam, setExam] = useState('');
   const [page, setPage] = useState(1);
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
   const scopedRequirements = data.requirements.filter(requirement =>
     currentUser?.role !== 'zonal_user' || requirement.zone === currentUser.zone
@@ -52,6 +54,40 @@ export default function WorkorderPage() {
   const currentPage = Math.min(page, pageCount);
   const pageRows = filtered.slice((currentPage - 1) * PAGE_SIZE, currentPage * PAGE_SIZE);
 
+  const markDownloaded = (records: typeof filtered) => {
+    const timestamp = new Date().toISOString();
+    const ids = new Set(records.map(record => record.id));
+    updateData(prev => ({
+      ...prev,
+      installations: prev.installations.map(record =>
+        ids.has(record.id)
+          ? { ...record, workOrderDownloadedAt: timestamp, workOrderDownloadedBy: currentUser?.id }
+          : record
+      ),
+    }));
+    records.forEach(record =>
+      addAuditLog('EXPORT', 'Workorder', record.id, undefined, {
+        downloadedAt: timestamp,
+        downloadedBy: currentUser?.id,
+      })
+    );
+  };
+
+  const downloadWorkorders = (records: typeof filtered) => {
+    if (records.length === 0) return;
+    printWorkordersPDF(records, data.requirements, data.vendors);
+    markDownloaded(records);
+  };
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds(previous => {
+      const next = new Set(previous);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
+
   return (
     <div>
       <div className="mb-6">
@@ -72,6 +108,14 @@ export default function WorkorderPage() {
           <span className="mb-0.5 rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-700">
             {filtered.length} workorders
           </span>
+          <Button variant="outline" size="sm" disabled={selectedIds.size === 0}
+            onClick={() => downloadWorkorders(filtered.filter(record => selectedIds.has(record.id)))}>
+            <Download size={14} /> Download selected ({selectedIds.size})
+          </Button>
+          <Button size="sm" disabled={filtered.length === 0}
+            onClick={() => downloadWorkorders(filtered)}>
+            <Download size={14} /> Download all ({filtered.length})
+          </Button>
         </div>
       </div>
 
@@ -80,20 +124,24 @@ export default function WorkorderPage() {
           <SortableTable className="w-full text-sm">
             <thead>
               <tr className="border-b border-slate-200 bg-slate-50">
-                {['S No', 'Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Vendor', 'Cameras', 'Exam Days', 'Cost', 'Actions'].map(heading =>
+                {['Select', 'S No', 'Client', 'Exam', 'Zone', 'TC Code', 'TC Name', 'Vendor', 'Cameras', 'Exam Days', 'Cost', 'Download status', 'Actions'].map(heading =>
                   <th key={heading} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{heading}</th>
                 )}
               </tr>
             </thead>
             <tbody>
               {pageRows.length === 0 ? (
-                <tr><td colSpan={11} className="px-4 py-8 text-center text-slate-400">No approved workorders found.</td></tr>
+                <tr><td colSpan={13} className="px-4 py-8 text-center text-slate-400">No approved workorders found.</td></tr>
               ) : pageRows.map((record, index) => {
                 const requirement = scopedRequirements.find(item => item.id === record.requirementId)!;
                 const vendor = data.vendors.find(item => item.id === record.vendorId);
                 const schedule = getRequirementExamSchedule(record.requirementId, data.requirements, data.installations, data.examDates);
                 return (
                   <tr key={record.id} className="border-t border-slate-100 hover:bg-blue-50/40">
+                    <td className="px-3 py-3">
+                      <input type="checkbox" checked={selectedIds.has(record.id)} onChange={() => toggleSelected(record.id)}
+                        aria-label={`Select workorder for TC ${requirement.tcCode}`} />
+                    </td>
                     <td className="px-3 py-3">{(currentPage - 1) * PAGE_SIZE + index + 1}</td>
                     <td className="px-3 py-3">{requirement.clientName}</td>
                     <td className="px-3 py-3">{requirement.examName}</td>
@@ -105,6 +153,22 @@ export default function WorkorderPage() {
                     <td className="px-3 py-3">{schedule.length}</td>
                     <td className="px-3 py-3">₹{record.localVendorCost.toLocaleString('en-IN')}</td>
                     <td className="px-3 py-3">
+                      {record.workOrderDownloadedAt ? (
+                        <span className="whitespace-nowrap rounded-full bg-green-100 px-2 py-1 text-xs font-semibold text-green-800"
+                          title={new Date(record.workOrderDownloadedAt).toLocaleString('en-IN')}>
+                          Downloaded
+                        </span>
+                      ) : (
+                        <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-600">
+                          Not downloaded
+                        </span>
+                      )}
+                    </td>
+                    <td className="px-3 py-3">
+                      <Button variant="outline" size="sm" aria-label={`Download workorder for TC ${requirement.tcCode}`}
+                        onClick={() => downloadWorkorders([record])}>
+                        <Download size={14} />
+                      </Button>
                       {can('edit_installation') && (
                         <Button variant="ghost" size="sm" aria-label={`View workorder for TC ${requirement.tcCode}`}
                           onClick={() => navigate(`/installation/edit/${record.id}`)}>

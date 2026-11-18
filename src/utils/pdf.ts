@@ -50,3 +50,59 @@ export function printRecordsPDF(
 
   doc.save(`ion-cctv-records-${new Date().toISOString().slice(0, 10)}.pdf`);
 }
+
+export function printWorkordersPDF(
+  installations: InstallationRecord[],
+  requirements: RequirementMaster[],
+  vendors: VendorMaster[]
+): void {
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
+
+  installations.forEach((installation, index) => {
+    const requirement = requirements.find(item => item.id === installation.requirementId);
+    const vendor = vendors.find(item => item.id === installation.vendorId);
+    if (index > 0) doc.addPage();
+
+    doc.setFillColor(15, 23, 42);
+    doc.rect(0, 0, 210, 28, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(16);
+    doc.text('TEMPORARY CCTV WORKORDER', 14, 18);
+    doc.setTextColor(15, 23, 42);
+
+    doc.setFontSize(10);
+    doc.text(`Workorder ID: WO-${installation.id.slice(0, 8).toUpperCase()}`, 14, 38);
+    doc.text(`Generated: ${new Date().toLocaleString('en-IN')}`, 14, 44);
+
+    autoTable(doc, {
+      startY: 52,
+      head: [['Workorder Details', 'Value']],
+      body: [
+        ['Client', requirement?.clientName || ''],
+        ['Exam', requirement?.examName || ''],
+        ['Zone', requirement?.zone || ''],
+        ['State', requirement?.state || ''],
+        ['City', requirement?.city || ''],
+        ['TC Code', requirement?.tcCode || ''],
+        ['TC Name', requirement?.tcName || ''],
+        ['Vendor', vendor?.vendorName || ''],
+        ['Installation Type', installation.installationType],
+        ['Camera Count', String(installation.cameraCount)],
+        ['Proxy Provided', installation.proxyProvided ? 'Yes' : 'No'],
+        ['Internet Provided', installation.internetProvided ? 'Yes' : 'No'],
+        ['Storage Provided', installation.storageProvided ? 'Yes' : 'No'],
+        ['Cost (Excl. Tax)', formatINR(installation.localVendorCost)],
+      ],
+      styles: { fontSize: 9 },
+      headStyles: { fillColor: [13, 27, 62] },
+      columnStyles: { 0: { fontStyle: 'bold', cellWidth: 55 } },
+    });
+
+    const endY = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? 200;
+    doc.setFontSize(9);
+    doc.setTextColor(100, 116, 139);
+    doc.text('This is a dummy workorder generated for operational use.', 14, endY + 15);
+  });
+
+  doc.save(`workorders-${new Date().toISOString().slice(0, 10)}.pdf`);
+}
