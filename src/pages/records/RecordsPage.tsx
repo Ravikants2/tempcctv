@@ -328,7 +328,7 @@ export default function RecordsPage() {
         <SortableTable className="w-full text-sm">
           <thead>
             <tr className="border-b border-slate-200 bg-slate-50">
-              {['S No','Zone','State','City','TC Code','TC Name','Exam Days','Candidates','Vendor','Cost (Excl. Tax)','Approval','Quotation','Post-exam observations','Actions'].map(h => (
+              {['S No','Zone','State','City','TC Code','TC Name','Exam Days','Candidates','Vendor','Cost (Excl. Tax)','Approval','Quotation','Observation count','Actions'].map(h => (
                 <th key={h} className="whitespace-nowrap px-3 py-3 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">{h}</th>
               ))}
             </tr>
@@ -340,6 +340,9 @@ export default function RecordsPage() {
               const req = scopedRequirements.find(r => r.id === inst.requirementId);
               const vendor = data.vendors.find(v => v.id === inst.vendorId);
               const { examDays, totalCandidates } = getInstallationStats(inst, data.examDates);
+              const examDates = [...new Set(data.examDates
+                .filter(date => date.installationRecordId === inst.id)
+                .map(date => normalizeExamDate(date.examDate) || date.examDate))];
               const recordRevisions = data.quoteRevisions
                 .filter(revision => revision.installationRecordId === inst.id)
                 .sort((left, right) => left.createdAt.localeCompare(right.createdAt));
@@ -389,6 +392,16 @@ export default function RecordsPage() {
                       installationRecordId={inst.id}
                       observations={data.postExamObservations}
                       users={data.users}
+                      clientName={req?.clientName || 'Client unavailable'}
+                      examName={req?.examName || 'Exam unavailable'}
+                      examDates={examDates}
+                      tcCode={req?.tcCode || '—'}
+                      tcName={req?.tcName || 'Venue unavailable'}
+                      zone={req?.zone || 'Zone unavailable'}
+                      state={req?.state || 'State unavailable'}
+                      city={req?.city || 'City unavailable'}
+                      vendor={vendor}
+                      installationType={inst.installationType}
                     />
                   </td>
                   <td className="px-3 py-3">

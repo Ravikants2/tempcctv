@@ -749,7 +749,7 @@ export default function ApprovalsPage() {
                 )}
               </div>
 
-              <div aria-hidden="true" className="hidden rounded-t-xl bg-slate-800 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-white xl:grid xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(128px,1.15fr)] xl:gap-2">
+              <div aria-hidden="true" className="hidden rounded-t-xl bg-slate-800 px-3 py-3 text-[10px] font-semibold uppercase tracking-wide text-white xl:grid xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)] xl:gap-2">
                 <span />
                 <span>Zone</span>
                 <span>State</span>
@@ -759,6 +759,7 @@ export default function ApprovalsPage() {
                 <span>Vendor</span>
                 <span>Installation cost</span>
                 <span>Per candidate</span>
+                <span>Approval remarks</span>
                 <span>Decision</span>
               </div>
 
@@ -770,9 +771,7 @@ export default function ApprovalsPage() {
                   record,
                   indexes.previousQuoteCostByRecord.get(record.id)
                 );
-                const approvalCardColumns = flags.length > 0
-                  ? 'xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)]'
-                  : 'xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(128px,1.15fr)]';
+                const approvalCardColumns = 'xl:grid-cols-[28px_minmax(60px,0.62fr)_minmax(70px,0.7fr)_minmax(75px,0.68fr)_minmax(130px,1.2fr)_minmax(95px,0.9fr)_minmax(115px,1.05fr)_minmax(90px,0.78fr)_minmax(100px,0.9fr)_minmax(160px,1.4fr)_minmax(128px,1.15fr)]';
                 const candidates = indexes.candidatesByRecord.get(record.id) || 0;
                 const schedules = indexes.schedulesByRecord.get(record.id) || [];
                 const examDates = [...new Set(schedules
@@ -832,16 +831,24 @@ export default function ApprovalsPage() {
                       <p className="mt-0.5 break-words text-xs leading-snug text-slate-800 xl:mt-0">
                         {examDates.length > 0 ? examDates.map(formatExamDate).join(', ') : 'Not recorded'}
                       </p>
-                    </div>
-                    <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-full">
-                      <p className="mb-1 text-[10px] font-semibold uppercase tracking-wide text-slate-500">
-                        Post-exam observations
-                      </p>
+                      <div className="mt-1 flex items-center gap-1">
+                        <span className="text-[9px] font-medium text-slate-500">Obs.</span>
                       <PostExamObservationHistory
                         installationRecordId={record.id}
                         observations={indexes.observationsByRecord.get(record.id) || []}
                         users={data.users}
+                        clientName={requirement.clientName}
+                        examName={requirement.examName}
+                        examDates={examDates}
+                        tcCode={requirement.tcCode}
+                        tcName={requirement.tcName}
+                        zone={requirement.zone}
+                        state={requirement.state}
+                        city={requirement.city}
+                        vendor={indexes.vendorsById.get(record.vendorId)}
+                        installationType={record.installationType}
                       />
+                      </div>
                     </div>
                     <div className="min-w-0">
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-slate-500 xl:hidden">Vendor</p>
@@ -883,28 +890,36 @@ export default function ApprovalsPage() {
                         </span>
                       )}
                     </div>
-                    {flags.length > 0 && <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-1">
-                      <Textarea
-                        label={`Approval remarks for TC Code ${requirement.tcCode}`}
-                        value={remarksByRecord[record.id] || ''}
-                        onChange={event => setRemarksByRecord(previous => ({
-                          ...previous,
-                          [record.id]: event.target.value,
-                        }))}
-                        rows={2}
-                        className="w-full min-w-0 max-w-full resize-y bg-white text-xs"
-                        placeholder="Required: explain this quote's higher total cost before approving"
-                      />
-                      <label className="mt-2 flex items-start gap-2 text-[10px] leading-snug text-amber-900">
-                        <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
-                          onChange={event => setExceptionByRecord(previous => ({
-                            ...previous,
-                            [record.id]: event.target.checked,
-                          }))}
-                          className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
-                        Exception approval for higher total cost
-                      </label>
-                    </div>}
+                    <div className="col-span-2 min-w-0 sm:col-span-3 xl:col-span-1">
+                      {flags.length > 0 ? (
+                        <>
+                          <Textarea
+                            label={`Approval remarks for TC Code ${requirement.tcCode}`}
+                            value={remarksByRecord[record.id] || ''}
+                            onChange={event => setRemarksByRecord(previous => ({
+                              ...previous,
+                              [record.id]: event.target.value,
+                            }))}
+                            rows={2}
+                            className="w-full min-w-0 max-w-full resize-y bg-white text-xs"
+                            placeholder="Required: explain this quote's higher total cost before approving"
+                          />
+                          <label className="mt-2 flex items-start gap-2 text-[10px] leading-snug text-amber-900">
+                            <input type="checkbox" checked={Boolean(exceptionByRecord[record.id])}
+                              onChange={event => setExceptionByRecord(previous => ({
+                                ...previous,
+                                [record.id]: event.target.checked,
+                              }))}
+                              className="mt-0.5 rounded border-amber-400 text-amber-600 focus:ring-amber-500" />
+                            Exception approval for higher total cost
+                          </label>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">
+                          <span className="xl:hidden">Approval remarks: </span>—
+                        </span>
+                      )}
+                    </div>
                     <div className="col-span-2 grid grid-cols-2 gap-2 border-t border-slate-100 pt-2 sm:col-span-3 xl:col-span-1 xl:grid-cols-1 xl:border-0 xl:pt-0">
                       <Button variant="outline" size="sm" className="min-h-9 whitespace-normal px-2 text-[11px]" disabled={!canApprove}
                         onClick={() => { setSendBackRecordId(record.id); setSendBackRemarks(''); }}>

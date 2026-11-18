@@ -251,7 +251,45 @@ describe('ApprovalsPage', () => {
 
     render(<ApprovalsPage />);
 
+    fireEvent.click(screen.getByRole('button', { name: 'View 1 post-exam observations for TC TC-100' }));
     expect(screen.getByText('Post-exam venue check completed.')).toBeInTheDocument();
+    expect(within(screen.getByRole('dialog')).getByText('Test Vendor')).toBeInTheDocument();
+  });
+
+  it('keeps approval cards aligned when only some records need exception remarks', () => {
+    const regularRequirement = {
+      ...initialData.requirements[0],
+      id: 'requirement-2',
+      tcCode: 'TC-200',
+      tcName: 'Regular Venue',
+    };
+    const regularRecord = {
+      ...initialData.installations[0],
+      id: 'installation-2',
+      requirementId: regularRequirement.id,
+      localVendorCost: 10000,
+    };
+    const regularRevisions = initialData.quoteRevisions.map(revision => ({
+      ...revision,
+      id: `${revision.id}-regular`,
+      installationRecordId: regularRecord.id,
+      localVendorCost: 10000,
+    }));
+    const mixedData: AppData = {
+      ...initialData,
+      requirements: [...initialData.requirements, regularRequirement],
+      installations: [...initialData.installations, regularRecord],
+      quoteRevisions: [...initialData.quoteRevisions, ...regularRevisions],
+    };
+    mockData = mixedData;
+    mockAuthData(mixedData);
+
+    render(<ApprovalsPage />);
+
+    const cards = screen.getAllByRole('article', { name: /Approval details for TC Code/ });
+    expect(cards).toHaveLength(2);
+    expect(cards[0].className.match(/xl:grid-cols-\[[^\]]+\]/)?.[0])
+      .toBe(cards[1].className.match(/xl:grid-cols-\[[^\]]+\]/)?.[0]);
   });
 
   it('approves one venue at a time and requires remarks for cost discrepancies', () => {
