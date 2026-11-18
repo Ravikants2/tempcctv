@@ -31,7 +31,8 @@ describe('built-in least-privilege policies', () => {
 
   it('limits zonal users to the requirement, vendor, and record modules', () => {
     expect(BUILT_IN_ROLE_PERMISSIONS.zonal_user).toEqual([
-      'page:requirements', 'page:vendors', 'page:records', 'records:create', 'records:edit',
+      'page:requirements', 'page:vendors', 'page:records', 'page:workorders',
+      'page:installation-status', 'records:create', 'records:edit',
     ]);
   });
 });

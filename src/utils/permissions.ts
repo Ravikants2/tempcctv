@@ -47,6 +47,8 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     label: 'Records',
     options: [
       { key: 'page:records', label: 'View records', description: 'Browse installation records and quotations' },
+      { key: 'page:workorders', label: 'View workorders', description: 'Browse approved installation workorders' },
+      { key: 'page:installation-status', label: 'View temporary CCTV installation status', description: 'Track quotation and installation status' },
       { key: 'records:create', label: 'Create installation records', description: 'Submit a new quote for approval' },
       { key: 'records:edit', label: 'Edit returned records', description: 'Update a quote returned by an approver' },
       { key: 'records:bulk', label: 'Bulk upload records', description: 'Import installation records' },
@@ -81,15 +83,15 @@ export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   user: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
     'page:dashboard.vendor', 'page:dashboard.venue', 'page:requirements',
-    'page:vendors', 'page:records',
+    'page:vendors', 'page:records', 'page:workorders', 'page:installation-status',
     'records:create', 'records:edit', 'workspace:backup',
   ],
   viewer: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
-    'page:dashboard.venue', 'page:vendors',
+    'page:dashboard.venue', 'page:vendors', 'page:workorders', 'page:installation-status',
   ],
   zonal_user: [
-    'page:requirements', 'page:vendors', 'page:records',
+    'page:requirements', 'page:vendors', 'page:records', 'page:workorders', 'page:installation-status',
     'records:create', 'records:edit',
   ],
   surveillance_head: ['page:approvals', 'approvals:surveillance'],

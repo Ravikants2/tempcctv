@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FileText, Users, ClipboardList, TrendingUp,
   Wrench, LogOut, Menu, X, ChevronDown,
   Download, Upload, Github, Loader2, CheckCircle2, AlertCircle,
-  UserCog, BellRing,
+  UserCog, BellRing, ClipboardCheck, Activity,
 } from 'lucide-react';
 
 const navItems = [
@@ -20,6 +20,8 @@ const navItems = [
   { to: '/requirements',         label: 'Requirements',       icon: FileText,        permission: 'page:requirements' },
   { to: '/vendors',              label: 'Vendors',             icon: Users,           permission: 'page:vendors' },
   { to: '/records',              label: 'Records',             icon: ClipboardList,   permission: 'page:records' },
+  { to: '/workorders',           label: 'Workorder',           icon: ClipboardCheck,  permission: 'page:workorders' },
+  { to: '/installation-status',  label: 'Temp. CCTV intallation status', icon: Activity, permission: 'page:installation-status' },
   { to: '/approvals',            label: 'Approvals',           icon: CheckCircle2,    permission: 'page:approvals' },
   { to: '/users',                label: 'User Management',     icon: UserCog,         permission: 'manage_users' },
   { to: '/approval-alert-criteria', label: 'Approval Alert Criteria', icon: BellRing, permission: 'manage_users' },

@@ -18,6 +18,8 @@ import VenueDashboard from './pages/dashboard/VenueDashboard';
 import UserManagementPage from './pages/users/UserManagementPage';
 import ApprovalAlertCriteriaPage from './pages/users/ApprovalAlertCriteriaPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
+import WorkorderPage from './pages/workorders/WorkorderPage';
+import InstallationStatusPage from './pages/installations/InstallationStatusPage';
 
 function WorkspaceLoading() {
   return (
@@ -85,6 +87,8 @@ function AppRoutes() {
         ['/approvals', 'page:approvals'],
         ['/requirements', 'page:requirements'],
         ['/records', 'page:records'],
+        ['/workorders', 'page:workorders'],
+        ['/installation-status', 'page:installation-status'],
         ['/vendors', 'page:vendors'],
       ].find(([, permission]) => can(permission))?.[0] || '/requirements'
     : '/login';
@@ -100,6 +104,8 @@ function AppRoutes() {
       <Route path="/requirements"         element={<ProtectedRoute zonalAllowed permission="page:requirements"><RequirementsPage /></ProtectedRoute>} />
       <Route path="/vendors"              element={<ProtectedRoute viewerAllowed zonalAllowed permission="page:vendors"><VendorsPage /></ProtectedRoute>} />
       <Route path="/records"              element={<ProtectedRoute zonalAllowed permission="page:records"><RecordsPage /></ProtectedRoute>} />
+      <Route path="/workorders"           element={<ProtectedRoute zonalAllowed permission="page:workorders"><WorkorderPage /></ProtectedRoute>} />
+      <Route path="/installation-status"  element={<ProtectedRoute zonalAllowed permission="page:installation-status"><InstallationStatusPage /></ProtectedRoute>} />
       <Route path="/approvals"            element={<ProtectedRoute approvalAllowed permission="page:approvals"><ApprovalsPage /></ProtectedRoute>} />
       <Route path="/users"                element={<ProtectedRoute permission="manage_users"><UserManagementPage /></ProtectedRoute>} />
       <Route path="/approval-alert-criteria" element={<ProtectedRoute permission="manage_users"><ApprovalAlertCriteriaPage /></ProtectedRoute>} />
