@@ -20,6 +20,7 @@ export default function OperationsDashboard() {
   const [detailPage, setDetailPage] = useState(1);
   const [pendingPage, setPendingPage] = useState(1);
   const [attentionPage, setAttentionPage] = useState(1);
+  const [selectedClient, setSelectedClient] = useState<string | null>(null);
 
   const filtered = applyDashboardFilters(data.installations, data.requirements, data.examDates, filters);
   const completion = getRequirementCompletion(data.requirements, data.installations, filters);
@@ -33,6 +34,61 @@ export default function OperationsDashboard() {
   const workordersDownloaded = approvedFiltered.filter(i => i.workOrderDownloadedAt).length;
   const workordersPending = approvedFiltered.length - workordersDownloaded;
   const workorderRows = approvedFiltered;
+
+  const clientSummaries = [...new Set(allReqs.map(requirement => requirement.clientName))]
+    .sort((left, right) => left.localeCompare(right))
+    .map(clientName => {
+      const clientRequirements = allReqs.filter(requirement => requirement.clientName === clientName);
+      const clientRequirementIds = new Set(clientRequirements.map(requirement => requirement.id));
+      const clientInstallations = filtered.filter(installation =>
+        clientRequirementIds.has(installation.requirementId)
+      );
+      const submittedInstallations = clientInstallations.filter(installation =>
+        ['pending', 'approved', 'returned'].includes(installation.approvalStatus || 'pending')
+      );
+      const pendingApproval = clientInstallations.filter(installation =>
+        (installation.approvalStatus || 'pending') === 'pending'
+      );
+      const approved = clientInstallations.filter(installation =>
+        installation.approvalStatus === 'approved'
+      );
+      const downloaded = approved.filter(installation => installation.workOrderDownloadedAt);
+
+      return {
+        clientName,
+        venues: clientRequirements.length,
+        recordsPending: clientRequirements.length - clientInstallations.length,
+        sentForApproval: submittedInstallations.length,
+        pendingApproval: pendingApproval.length,
+        approved: approved.length,
+        workordersDownloaded: downloaded.length,
+        workordersPending: approved.length - downloaded.length,
+      };
+    });
+
+  const selectedClientRequirements = selectedClient
+    ? allReqs.filter(requirement => requirement.clientName === selectedClient)
+    : [];
+  const selectedClientExams = [...new Set(selectedClientRequirements.map(requirement => requirement.examName))]
+    .sort((left, right) => left.localeCompare(right))
+    .map(examName => {
+      const examRequirements = selectedClientRequirements.filter(requirement => requirement.examName === examName);
+      const examInstallations = filtered.filter(installation =>
+        examRequirements.some(requirement => requirement.id === installation.requirementId)
+      );
+      return {
+        examName,
+        venues: examRequirements.length,
+        sentForApproval: examInstallations.length,
+        pendingApproval: examInstallations.filter(installation =>
+          (installation.approvalStatus || 'pending') === 'pending'
+        ).length,
+        approved: examInstallations.filter(installation => installation.approvalStatus === 'approved').length,
+        downloaded: examInstallations.filter(installation =>
+          installation.approvalStatus === 'approved' && installation.workOrderDownloadedAt
+        ).length,
+      };
+    });
 
   const fullVendor = filtered.filter(i => i.installationType === 'Full Vendor');
   const partialVendor = filtered.filter(i => i.installationType === 'Partial Vendor');
@@ -119,6 +175,126 @@ export default function OperationsDashboard() {
         <KPICard title="Workorders Downloaded" value={workordersDownloaded} icon={<FileText size={20} />} color="green" />
         <KPICard title="Workorders Pending" value={workordersPending} icon={<Clock size={20} />} color="orange" />
       </div>
+
+      <div className="bg-white border rounded-xl shadow-sm overflow-x-auto mb-6">
+        <div className="px-4 py-3 border-b font-semibold text-gray-800">Client-wise Approval &amp; Workorder Summary</div>
+        <SortableTable className="w-full text-sm">
+          <thead><tr className="bg-gray-50">
+            {['Client','Venues','Records Pending','Sent for Approval','Pending Approval','Approved','WO Downloaded','WO Pending'].map(h => (
+              <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
+            ))}
+          </tr></thead>
+          <tbody>
+            {clientSummaries.length === 0 ? (
+              <tr><td colSpan={8} className="px-4 py-8 text-center text-gray-400">No client records found.</td></tr>
+            ) : clientSummaries.map(summary => (
+              <tr key={summary.clientName} className="border-t hover:bg-blue-50/40">
+                <td className="px-3 py-2">
+                  <button type="button" onClick={() => setSelectedClient(
+                    selectedClient === summary.clientName ? null : summary.clientName
+                  )}
+                    className="font-semibold text-blue-700 hover:underline">
+                    {summary.clientName}
+                  </button>
+                </td>
+                <td className="px-3 py-2">{summary.venues}</td>
+                <td className="px-3 py-2">{summary.recordsPending}</td>
+                <td className="px-3 py-2">{summary.sentForApproval}</td>
+                <td className="px-3 py-2">{summary.pendingApproval}</td>
+                <td className="px-3 py-2">{summary.approved}</td>
+                <td className="px-3 py-2">{summary.workordersDownloaded}</td>
+                <td className="px-3 py-2">{summary.workordersPending}</td>
+              </tr>
+            ))}
+          </tbody>
+        </SortableTable>
+      </div>
+
+      {selectedClient && (
+        <div className="mb-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-gray-900">{selectedClient} — Exam &amp; Venue Details</h2>
+            <button type="button" onClick={() => setSelectedClient(null)}
+              className="text-sm text-blue-600 hover:underline">Close details</button>
+          </div>
+
+          <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
+            <div className="px-4 py-3 border-b font-semibold text-gray-800">Exam-wise Summary</div>
+            <SortableTable className="w-full text-sm">
+              <thead><tr className="bg-gray-50">
+                {['Exam','Venues','Sent for Approval','Pending Approval','Approved','WO Downloaded'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {selectedClientExams.map(exam => (
+                  <tr key={exam.examName} className="border-t">
+                    <td className="px-3 py-2 font-medium">{exam.examName}</td>
+                    <td className="px-3 py-2">{exam.venues}</td>
+                    <td className="px-3 py-2">{exam.sentForApproval}</td>
+                    <td className="px-3 py-2">{exam.pendingApproval}</td>
+                    <td className="px-3 py-2">{exam.approved}</td>
+                    <td className="px-3 py-2">{exam.downloaded}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </SortableTable>
+          </div>
+
+          <div className="bg-white border rounded-xl shadow-sm overflow-x-auto">
+            <div className="px-4 py-3 border-b font-semibold text-gray-800">Venue Details</div>
+            <SortableTable className="w-full text-sm">
+              <thead><tr className="bg-gray-50">
+                {['Exam','Zone','State','City','TC Code','TC Name','Record Status','Approval Status','WO Status'].map(h => (
+                  <th key={h} className="px-3 py-2 text-left text-xs font-semibold text-gray-600">{h}</th>
+                ))}
+              </tr></thead>
+              <tbody>
+                {selectedClientRequirements.map(requirement => {
+                  const installation = filtered.find(item => item.requirementId === requirement.id);
+                  const approvalStatus = installation
+                    ? (installation.approvalStatus || 'pending')
+                    : 'Not created';
+                  const recordStatus = installation ? 'Created' : 'Pending';
+                  const workorderStatus = !installation
+                    ? 'Not applicable'
+                    : installation.approvalStatus === 'approved'
+                      ? installation.workOrderDownloadedAt ? 'Downloaded' : 'Pending'
+                      : 'Waiting for approval';
+                  return (
+                    <tr key={requirement.id} className="border-t hover:bg-gray-50">
+                      <td className="px-3 py-2">{requirement.examName}</td>
+                      <td className="px-3 py-2">{requirement.zone}</td>
+                      <td className="px-3 py-2">{requirement.state}</td>
+                      <td className="px-3 py-2">{requirement.city}</td>
+                      <td className="px-3 py-2 font-mono text-xs">{requirement.tcCode}</td>
+                      <td className="px-3 py-2">{requirement.tcName}</td>
+                      <td className="px-3 py-2"><Badge variant={recordStatus === 'Created' ? 'success' : 'warning'}>{recordStatus}</Badge></td>
+                      <td className="px-3 py-2">
+                        <Badge variant={
+                          approvalStatus === 'approved' ? 'success'
+                            : approvalStatus === 'returned' ? 'error'
+                              : approvalStatus === 'pending' ? 'warning'
+                                : 'neutral'
+                        }>
+                          {approvalStatus === 'pending' ? 'Pending approval' : approvalStatus}
+                        </Badge>
+                      </td>
+                      <td className="px-3 py-2">
+                        <Badge variant={
+                          workorderStatus === 'Downloaded' ? 'success'
+                            : workorderStatus === 'Pending' ? 'warning'
+                              : 'neutral'
+                        }>{workorderStatus}</Badge>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </SortableTable>
+          </div>
+        </div>
+      )}
 
       {workorderRows.length > 0 && (
         <div className="bg-white border rounded-xl shadow-sm overflow-x-auto mb-6">

@@ -114,6 +114,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     }
   }, []);
 
+  useEffect(() => {
+    if (!currentUser) return;
+    const refreshTimer = window.setInterval(() => {
+      void loadData().then(loaded => {
+        setData(loaded);
+      }).catch(error => {
+        setSyncStatus('error');
+        setSyncError((error as Error).message);
+      });
+    }, 60_000);
+    return () => window.clearInterval(refreshTimer);
+  }, [currentUser]);
+
   const updateData = useCallback((updater: (prev: AppData) => AppData) => {
     setData(prev => {
       const next = updater(prev);
