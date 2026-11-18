@@ -12,6 +12,8 @@ If the private database does not contain a Super Admin with a PBKDF2 password ha
 
 Sign-in does not write to the database, so a GitHub save failure cannot block authentication. New sign-ins and last-sign-in timestamps are not recorded; any existing sign-in audit entries are historical.
 
+The private database has a 16 MB limit. The app checks this before sending a save and reports an actionable error if the limit is exceeded; reduce quotation PDFs or other stored data before retrying.
+
 ## Configure deployment
 
 The GitHub Actions workflows publish the Worker and GitHub Pages app. Before deploying, configure the following in the public app repository under **Settings → Secrets and variables → Actions**. Never put secret values in source, workflow files, chat messages, or the private data database.

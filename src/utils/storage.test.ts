@@ -52,6 +52,26 @@ describe('Cloudflare Worker API client', () => {
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 
+  it('rejects oversized saves before sending them to the Worker', async () => {
+    const fetchMock = vi.spyOn(globalThis, 'fetch');
+    const { getInitialData, saveData } = await import('./storage');
+    const data = getInitialData();
+    data.postExamObservations = [{
+      id: 'large-observation',
+      installationRecordId: 'installation-1',
+      examDate: '2026-11-18',
+      comment: 'x'.repeat(16_000_001),
+      createdBy: 'user-1',
+      createdAt: '2026-11-18T00:00:00.000Z',
+    }];
+
+    await expect(saveData(data)).rejects.toMatchObject({
+      message: 'The database exceeds the 16 MB limit. Remove or reduce quotation PDFs, then retry.',
+      status: 413,
+    });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
   it('attaches the app session to authenticated API calls and clears it on logout', async () => {
     sessionStorage.setItem('ion_session', 'signed-app-session');
     const fetchMock = vi.spyOn(globalThis, 'fetch').mockImplementation(async () =>

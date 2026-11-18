@@ -2,6 +2,7 @@ import type { AppData, User } from '../types';
 
 const API_ENDPOINT = import.meta.env.VITE_API_ENDPOINT?.replace(/\/+$/, '') || '';
 const SESSION_KEY = 'ion_session';
+const MAX_DATABASE_BYTES = 16_000_000;
 
 function clearLegacyClientData(): void {
   localStorage.removeItem('ion_cctv_data');
@@ -216,6 +217,10 @@ export async function loadData(): Promise<AppData> {
 /** Save application changes through the authenticated Worker API. */
 export async function saveData(data: AppData, onError?: (error: Error) => void): Promise<AppData> {
   try {
+    const databaseBytes = new TextEncoder().encode(JSON.stringify(data, null, 2)).byteLength;
+    if (databaseBytes > MAX_DATABASE_BYTES) {
+      throw apiError('The database exceeds the 16 MB limit. Remove or reduce quotation PDFs, then retry.', 413);
+    }
     const result = await apiRequest<{ data: Partial<AppData> }>('/api/data', {
       method: 'PUT',
       body: JSON.stringify({ data }),
