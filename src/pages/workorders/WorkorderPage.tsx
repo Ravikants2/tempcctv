@@ -10,10 +10,9 @@ import { Alert, Modal } from '../../components/ui/index';
 import { Download, Eye, CheckCircle } from 'lucide-react';
 import { printWorkordersPDF } from '../../utils/pdf';
 import { v4 as uuidv4 } from 'uuid';
+import { TEMP_CCTV_INSTALLATION_DECLARATION } from '../../utils/installation';
 
 const PAGE_SIZE = 10;
-const INSTALLATION_DECLARATION =
-  'I confirm that the temporary CCTV installation at this venue is complete and the installation date provided is accurate.';
 
 export default function WorkorderPage() {
   const { data, can, currentUser, updateData, addAuditLog } = useAuth();
@@ -163,7 +162,7 @@ export default function WorkorderPage() {
         tempCctvInstalledAt: installationDate,
         tempCctvInstalledBy: currentUser?.id,
         tempCctvInstallationDeclaredAt: completedAt,
-        tempCctvInstallationDeclaration: INSTALLATION_DECLARATION,
+        tempCctvInstallationDeclaration: TEMP_CCTV_INSTALLATION_DECLARATION,
       }),
       timestamp: completedAt,
     }));
@@ -176,7 +175,7 @@ export default function WorkorderPage() {
               tempCctvInstalledAt: installationDate,
               tempCctvInstalledBy: currentUser?.id,
               tempCctvInstallationDeclaredAt: completedAt,
-              tempCctvInstallationDeclaration: INSTALLATION_DECLARATION,
+              tempCctvInstallationDeclaration: TEMP_CCTV_INSTALLATION_DECLARATION,
             }
           : record
       ),
@@ -356,7 +355,7 @@ export default function WorkorderPage() {
           <label className="flex items-start gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3 text-sm text-slate-700">
             <input type="checkbox" checked={declarationAccepted}
               onChange={event => setDeclarationAccepted(event.target.checked)} className="mt-1" />
-            <span>{INSTALLATION_DECLARATION}</span>
+            <span>{TEMP_CCTV_INSTALLATION_DECLARATION}</span>
           </label>
           {completionAlert && <p className="text-sm text-red-600" role="alert">{completionAlert}</p>}
           <div className="flex justify-end gap-2">
