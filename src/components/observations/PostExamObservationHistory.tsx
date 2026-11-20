@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { MessageSquareText } from 'lucide-react';
 import { createPortal } from 'react-dom';
-import type { User } from '../../types';
+import type { ObservationSeverity, ObservationType, User } from '../../types';
 import { formatExamDate } from '../../utils/dates';
 import type { PostExamObservationEntry } from '../../utils/postExamObservations';
 import { Modal } from '../ui';
@@ -13,12 +13,16 @@ interface PostExamObservationHistoryProps {
   tcCode: string;
   entries: PostExamObservationEntry[];
   users: User[];
+  severities?: ObservationSeverity[];
+  observationTypes?: ObservationType[];
 }
 
 export function PostExamObservationHistory({
   tcCode,
   entries,
   users,
+  severities = [],
+  observationTypes = [],
 }: PostExamObservationHistoryProps) {
   const [page, setPage] = useState(1);
   const [open, setOpen] = useState(false);
@@ -35,6 +39,21 @@ export function PostExamObservationHistory({
     `${entry.clientName.trim().toLocaleLowerCase()}\u0000${entry.examName.trim().toLocaleLowerCase()}`
   )).size;
   const venueName = orderedEntries[0]?.tcName;
+  const severityById = new Map(severities.map(severity => [severity.id, severity]));
+  const observationTypeById = new Map(observationTypes.map(type => [type.id, type]));
+  const rank = (severity?: ObservationSeverity) =>
+    severity?.color === 'red' ? 3 : severity?.color === 'amber' ? 2 : severity?.color === 'green' ? 1 : 0;
+  const highestSeverity = orderedEntries
+    .map(entry => severityById.get(entry.observation.severityId || ''))
+    .filter((severity): severity is ObservationSeverity => Boolean(severity))
+    .sort((left, right) => rank(right) - rank(left))[0];
+  const blinkClass = highestSeverity?.color === 'red'
+    ? 'severity-blink-red'
+    : highestSeverity?.color === 'amber'
+      ? 'severity-blink-amber'
+      : highestSeverity?.color === 'green'
+        ? 'severity-blink-green'
+        : '';
 
   return (
     <>
@@ -44,7 +63,7 @@ export function PostExamObservationHistory({
         aria-label={`View ${orderedEntries.length} post-exam observations for TC ${tcCode}`}
         title={`${orderedEntries.length} post-exam observation${orderedEntries.length === 1 ? '' : 's'}`}
         onClick={() => { setPage(1); setOpen(true); }}
-        className="inline-flex min-w-8 items-center justify-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-500"
+        className={`inline-flex min-w-8 items-center justify-center gap-1 rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-semibold text-blue-800 hover:bg-blue-100 disabled:cursor-default disabled:border-slate-200 disabled:bg-slate-50 disabled:text-slate-500 ${blinkClass}`}
       >
         <MessageSquareText size={13} aria-hidden="true" />
         {orderedEntries.length}
@@ -73,6 +92,8 @@ export function PostExamObservationHistory({
                   const postedAt = Number.isNaN(timestamp.getTime())
                     ? observation.createdAt
                     : timestamp.toLocaleString('en-IN');
+                  const severity = severityById.get(observation.severityId || '');
+                  const observationType = observationTypeById.get(observation.observationTypeId || '');
                   return (
                     <article key={observation.id} className="rounded-lg border border-slate-200 p-3">
                       <div className="grid gap-3 sm:grid-cols-2">
@@ -91,6 +112,24 @@ export function PostExamObservationHistory({
                             {vendor?.zone ? ` · ${vendor.zone}` : ''} · {installationType}
                           </p>
                         </section>
+                      </div>
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {severity && (
+                          <span className={`rounded-full px-2 py-1 text-[11px] font-semibold ${
+                            severity.color === 'red'
+                              ? 'severity-blink-red bg-red-100 text-red-800'
+                              : severity.color === 'amber'
+                                ? 'severity-blink-amber bg-amber-100 text-amber-800'
+                                : 'severity-blink-green bg-green-100 text-green-800'
+                          }`}>
+                            Severity: {severity.name}
+                          </span>
+                        )}
+                        {observationType && (
+                          <span className="rounded-full bg-blue-50 px-2 py-1 text-[11px] font-semibold text-blue-800">
+                            {observationType.name}
+                          </span>
+                        )}
                       </div>
                       <p className="mt-3 whitespace-pre-wrap break-words text-sm text-slate-800">
                         {observation.comment}

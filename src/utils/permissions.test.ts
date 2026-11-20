@@ -42,6 +42,8 @@ describe('built-in least-privilege policies', () => {
       'observations:create',
     ]);
     expect(BUILT_IN_ROLE_PERMISSIONS.backend_user).not.toContain('page:records');
+    expect(BUILT_IN_ROLE_PERMISSIONS.sub_admin).toContain('page:post-exam-observations');
+    expect(BUILT_IN_ROLE_PERMISSIONS.sub_admin).toContain('observations:manage_lists');
     expect(BUILT_IN_ROLE_PERMISSIONS.sub_admin).not.toContain('observations:create');
   });
 });

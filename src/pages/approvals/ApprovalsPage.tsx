@@ -838,6 +838,8 @@ export default function ApprovalsPage() {
                         tcCode={requirement.tcCode}
                         entries={indexes.observationsByTcCode.get(tcCodeKey(requirement.tcCode)) || []}
                         users={data.users}
+                        severities={data.observationSeverities}
+                        observationTypes={data.observationTypes}
                       />
                       </div>
                     </div>

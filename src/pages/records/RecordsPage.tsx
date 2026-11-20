@@ -396,6 +396,8 @@ export default function RecordsPage() {
                       tcCode={req?.tcCode || '—'}
                       entries={observationEntriesByTcCode.get(tcCodeKey(req?.tcCode || '')) || []}
                       users={data.users}
+                      severities={data.observationSeverities}
+                      observationTypes={data.observationTypes}
                     />
                   </td>
                   <td className="px-3 py-3">

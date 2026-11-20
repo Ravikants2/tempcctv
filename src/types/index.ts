@@ -167,6 +167,21 @@ export interface PostExamObservation {
   comment: string;
   createdBy: string;
   createdAt: string;
+  severityId?: string;
+  observationTypeId?: string;
+}
+
+export interface ObservationSeverity {
+  id: string;
+  name: string;
+  color: 'red' | 'amber' | 'green';
+  createdAt: string;
+}
+
+export interface ObservationType {
+  id: string;
+  name: string;
+  createdAt: string;
 }
 
 export interface QuotationFile {
@@ -207,6 +222,8 @@ export interface AppData {
   userGroups: UserGroup[];
   auditLogs: AuditLog[];
   approvalAlertCriteria?: Partial<ApprovalAlertCriteria>;
+  observationSeverities?: ObservationSeverity[];
+  observationTypes?: ObservationType[];
 }
 
 export interface DashboardFilters {

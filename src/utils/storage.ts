@@ -28,6 +28,15 @@ export function getInitialData(): AppData {
     accessRoles: [],
     userGroups: [],
     auditLogs: [],
+    observationSeverities: [
+      { id: 'severity-high', name: 'High', color: 'red', createdAt: new Date(0).toISOString() },
+      { id: 'severity-mid', name: 'Mid', color: 'amber', createdAt: new Date(0).toISOString() },
+      { id: 'severity-low', name: 'Low', color: 'green', createdAt: new Date(0).toISOString() },
+    ],
+    observationTypes: [
+      { id: 'observation-poor-camera', name: 'Poor Camera Quality', createdAt: new Date(0).toISOString() },
+      { id: 'observation-recording-missing', name: 'Recording Missing', createdAt: new Date(0).toISOString() },
+    ],
     approvalAlertCriteria: {
       approvalDaysBeforeExam: 7,
       quotationDaysBeforeExam: 7,
@@ -70,6 +79,12 @@ export function normalizeAppData(data: Partial<AppData>): AppData {
     accessRoles: Array.isArray(data.accessRoles) ? data.accessRoles : [],
     userGroups,
     auditLogs: Array.isArray(data.auditLogs) ? data.auditLogs : [],
+    observationSeverities: Array.isArray(data.observationSeverities) && data.observationSeverities.length > 0
+      ? data.observationSeverities
+      : initial.observationSeverities,
+    observationTypes: Array.isArray(data.observationTypes) && data.observationTypes.length > 0
+      ? data.observationTypes
+      : initial.observationTypes,
     approvalAlertCriteria: {
       approvalDaysBeforeExam: validAlertDays(
         data.approvalAlertCriteria?.approvalDaysBeforeExam ??

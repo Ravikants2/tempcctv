@@ -8,7 +8,6 @@ import { TablePagination } from '../../components/ui/TablePagination';
 import { getRequirementExamSchedule } from '../../utils/calculations';
 import { Alert, Modal } from '../../components/ui/index';
 import { Download, Eye, CheckCircle } from 'lucide-react';
-import { printWorkordersPDF } from '../../utils/pdf';
 import { v4 as uuidv4 } from 'uuid';
 import { TEMP_CCTV_INSTALLATION_DECLARATION } from '../../utils/installation';
 
@@ -98,9 +97,54 @@ export default function WorkorderPage() {
     );
   };
 
+  const downloadWorkordersCSV = (records: typeof filtered) => {
+    if (records.length === 0) return;
+    const escapeCsv = (value: unknown) => {
+      const text = String(value ?? '');
+      return /[",\r\n]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+    };
+    const headers = [
+      'Client', 'Exam', 'Zone', 'State', 'City', 'TC Code', 'TC Name',
+      'Vendor', 'Cameras', 'Exam Days', 'Cost', 'Download Status', 'Installation Status',
+    ];
+    const rows = records.map(record => {
+      const requirement = scopedRequirements.find(item => item.id === record.requirementId);
+      const vendor = data.vendors.find(item => item.id === record.vendorId);
+      const schedule = getRequirementExamSchedule(record.requirementId, data.requirements, data.installations, data.examDates);
+      return [
+        requirement?.clientName,
+        requirement?.examName,
+        requirement?.zone,
+        requirement?.state,
+        requirement?.city,
+        requirement?.tcCode,
+        requirement?.tcName,
+        vendor?.vendorName,
+        record.cameraCount,
+        schedule.length,
+        record.localVendorCost,
+        record.workOrderDownloadedAt ? 'Downloaded' : 'Not downloaded',
+        record.tempCctvInstalledAt ? `Installed · ${record.tempCctvInstalledAt}` : 'Pending installation',
+      ];
+    });
+    const csv = [
+      headers.map(escapeCsv).join(','),
+      ...rows.map(row => row.map(escapeCsv).join(',')),
+    ].join('\r\n');
+    const blob = new Blob([`\uFEFF${csv}`], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = `workorders-${new Date().toISOString().slice(0, 10)}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    URL.revokeObjectURL(url);
+  };
+
   const downloadWorkorders = (records: typeof filtered) => {
     if (records.length === 0) return;
-    printWorkordersPDF(records, data.requirements, data.vendors);
+    downloadWorkordersCSV(records);
     markDownloaded(records);
   };
 
@@ -216,11 +260,11 @@ export default function WorkorderPage() {
           </span>
           <Button variant="outline" size="sm" disabled={selectedIds.size === 0}
             onClick={() => downloadWorkorders(filtered.filter(record => selectedIds.has(record.id)))}>
-            <Download size={14} /> Download selected ({selectedIds.size})
+            <Download size={14} /> Download CSV ({selectedIds.size})
           </Button>
           <Button size="sm" disabled={filtered.length === 0}
             onClick={() => downloadWorkorders(filtered)}>
-            <Download size={14} /> Download all ({filtered.length})
+            <Download size={14} /> Download CSV all ({filtered.length})
           </Button>
           {isZonalUser && (
             <Button size="sm" variant="secondary" disabled={selectedCompletionIds.size === 0}
@@ -318,7 +362,7 @@ export default function WorkorderPage() {
                         : <span className="whitespace-nowrap rounded-full bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-800">Pending installation</span>}
                     </td>
                     <td className="px-3 py-3">
-                      <Button variant="outline" size="sm" aria-label={`Download workorder for TC ${requirement.tcCode}`}
+                      <Button variant="outline" size="sm" aria-label={`Download CSV workorder for TC ${requirement.tcCode}`}
                         onClick={() => downloadWorkorders([record])}>
                         <Download size={14} />
                       </Button>

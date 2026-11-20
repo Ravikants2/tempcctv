@@ -16,3 +16,38 @@ body {
   outline: 2px solid #2563eb;
   outline-offset: 2px;
 }
+
+@keyframes severity-blink-red {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(220, 38, 38, 0); background-color: #fee2e2; }
+  50% { box-shadow: 0 0 0 4px rgba(220, 38, 38, 0.35); background-color: #ef4444; color: #fff; }
+}
+
+@keyframes severity-blink-amber {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(217, 119, 6, 0); background-color: #fef3c7; }
+  50% { box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.32); background-color: #f59e0b; color: #fff; }
+}
+
+@keyframes severity-blink-green {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 222, 128, 0); background-color: #dcfce7; }
+  50% { box-shadow: 0 0 0 4px rgba(74, 222, 128, 0.28); background-color: #86efac; color: #166534; }
+}
+
+.severity-blink-red {
+  animation: severity-blink-red 1.2s ease-in-out infinite;
+}
+
+.severity-blink-amber {
+  animation: severity-blink-amber 1.2s ease-in-out infinite;
+}
+
+.severity-blink-green {
+  animation: severity-blink-green 1.2s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .severity-blink-red,
+  .severity-blink-amber,
+  .severity-blink-green {
+    animation: none;
+  }
+}

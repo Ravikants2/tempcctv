@@ -5,7 +5,13 @@ import { Alert, Modal } from '../../components/ui';
 import { Button } from '../../components/ui/Button';
 import { Input, Select, Textarea } from '../../components/ui/FormFields';
 import { TablePagination } from '../../components/ui/TablePagination';
-import type { InstallationRecord, PostExamObservation, RequirementMaster } from '../../types';
+import type {
+  InstallationRecord,
+  ObservationSeverity,
+  ObservationType,
+  PostExamObservation,
+  RequirementMaster,
+} from '../../types';
 import { formatExamDate, normalizeExamDate } from '../../utils/dates';
 
 const PAGE_SIZE = 10;
@@ -27,9 +33,28 @@ export default function PostExamObservationPage() {
   const [page, setPage] = useState(1);
   const [selectedRow, setSelectedRow] = useState<ObservationRow | null>(null);
   const [comment, setComment] = useState('');
+  const [severityId, setSeverityId] = useState('');
+  const [observationTypeId, setObservationTypeId] = useState('');
+  const [severityName, setSeverityName] = useState('');
+  const [severityColor, setSeverityColor] = useState<ObservationSeverity['color']>('amber');
+  const [observationTypeName, setObservationTypeName] = useState('');
   const [formError, setFormError] = useState('');
   const [successMessage, setSuccessMessage] = useState('');
   const canCreate = can('observations:create');
+  const canManageLists = can('observations:manage_lists');
+  const severities = data.observationSeverities?.length
+    ? data.observationSeverities
+    : [
+        { id: 'severity-high', name: 'High', color: 'red' as const, createdAt: '' },
+        { id: 'severity-mid', name: 'Mid', color: 'amber' as const, createdAt: '' },
+        { id: 'severity-low', name: 'Low', color: 'green' as const, createdAt: '' },
+      ];
+  const observationTypes = data.observationTypes?.length
+    ? data.observationTypes
+    : [
+        { id: 'observation-poor-camera', name: 'Poor Camera Quality', createdAt: '' },
+        { id: 'observation-recording-missing', name: 'Recording Missing', createdAt: '' },
+      ];
 
   const rows = useMemo(() => {
     const requirementsById = new Map(data.requirements.map(requirement => [requirement.id, requirement]));
@@ -91,11 +116,64 @@ export default function PostExamObservationPage() {
     setPage(1);
   };
 
+  const addSeverity = () => {
+    const name = severityName.trim();
+    if (!name) return;
+    if (severities.some(severity => severity.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setFormError('A severity with this name already exists.');
+      return;
+    }
+    const severity: ObservationSeverity = {
+      id: uuidv4(),
+      name,
+      color: severityColor,
+      createdAt: new Date().toISOString(),
+    };
+    updateData(previous => ({
+      ...previous,
+      observationSeverities: [...(previous.observationSeverities?.length
+        ? previous.observationSeverities
+        : severities), severity],
+    }));
+    setSeverityName('');
+    setSuccessMessage('Severity level added.');
+  };
+
+  const addObservationType = () => {
+    const name = observationTypeName.trim();
+    if (!name) return;
+    if (observationTypes.some(type => type.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      setFormError('A predefined observation with this name already exists.');
+      return;
+    }
+    const observationType: ObservationType = {
+      id: uuidv4(),
+      name,
+      createdAt: new Date().toISOString(),
+    };
+    updateData(previous => ({
+      ...previous,
+      observationTypes: [...(previous.observationTypes?.length
+        ? previous.observationTypes
+        : observationTypes), observationType],
+    }));
+    setObservationTypeName('');
+    setSuccessMessage('Predefined observation added.');
+  };
+
   const saveObservation = () => {
     const trimmedComment = comment.trim();
     if (!selectedRow) return;
     if (!trimmedComment) {
       setFormError('Enter an observation before saving.');
+      return;
+    }
+    if (!severityId) {
+      setFormError('Select a severity.');
+      return;
+    }
+    if (!observationTypeId) {
+      setFormError('Select a predefined observation type.');
       return;
     }
     if (!currentUser) {
@@ -108,6 +186,8 @@ export default function PostExamObservationPage() {
       installationRecordId: selectedRow.installation.id,
       examDate: selectedRow.examDate,
       comment: trimmedComment,
+      severityId,
+      observationTypeId,
       createdBy: currentUser.id,
       createdAt: new Date().toISOString(),
     };
@@ -117,6 +197,8 @@ export default function PostExamObservationPage() {
     }));
     setSelectedRow(null);
     setComment('');
+    setSeverityId('');
+    setObservationTypeId('');
     setFormError('');
     setSuccessMessage('Post-exam observation added.');
   };
@@ -198,6 +280,8 @@ export default function PostExamObservationPage() {
                         <Button size="sm" onClick={() => {
                           setSelectedRow(row);
                           setComment('');
+                          setSeverityId(severities[0]?.id || '');
+                          setObservationTypeId(observationTypes[0]?.id || '');
                           setFormError('');
                         }}>Add observation</Button>
                       ) : <span className="text-xs text-slate-500">Read only</span>}
@@ -220,6 +304,55 @@ export default function PostExamObservationPage() {
         <TablePagination page={currentPage} pageSize={PAGE_SIZE} totalItems={filteredRows.length} onPageChange={setPage} />
       </div>
 
+      {canManageLists && (
+        <section className="mt-5 grid gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2"
+          aria-label="Observation list management">
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Severity levels</h2>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {severities.map(severity => (
+                <span key={severity.id}
+                  className={`rounded-full px-2.5 py-1 text-xs font-semibold ${
+                    severity.color === 'red' ? 'bg-red-100 text-red-800'
+                      : severity.color === 'amber' ? 'bg-amber-100 text-amber-800'
+                        : 'bg-green-100 text-green-800'
+                  }`}>
+                  {severity.name}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex items-end gap-2">
+              <Input label="Severity name" value={severityName} placeholder="e.g. Critical"
+                onChange={event => setSeverityName(event.target.value)} className="w-40" />
+              <Select label="Blink colour" value={severityColor}
+                options={[
+                  { value: 'red', label: 'Red' },
+                  { value: 'amber', label: 'Amber' },
+                  { value: 'green', label: 'Light green' },
+                ]}
+                onChange={event => setSeverityColor(event.target.value as ObservationSeverity['color'])}
+                className="w-36" />
+              <Button size="sm" onClick={addSeverity}>Add severity</Button>
+            </div>
+          </div>
+          <div>
+            <h2 className="text-sm font-semibold text-slate-900">Predefined observations</h2>
+            <div className="mt-2 flex flex-wrap gap-2">
+              {observationTypes.map(type => (
+                <span key={type.id} className="rounded-full bg-blue-50 px-2.5 py-1 text-xs font-semibold text-blue-800">
+                  {type.name}
+                </span>
+              ))}
+            </div>
+            <div className="mt-3 flex items-end gap-2">
+              <Input label="Observation list item" value={observationTypeName} placeholder="e.g. Camera Offline"
+                onChange={event => setObservationTypeName(event.target.value)} className="flex-1" />
+              <Button size="sm" onClick={addObservationType}>Add list item</Button>
+            </div>
+          </div>
+        </section>
+      )}
+
       <Modal open={Boolean(selectedRow)} title="Add post-exam observation" size="md"
         onClose={() => { setSelectedRow(null); setFormError(''); }}>
         {selectedRow && (
@@ -228,6 +361,16 @@ export default function PostExamObservationPage() {
               <p className="font-semibold text-slate-900">{selectedRow.requirement.clientName} · {selectedRow.requirement.examName}</p>
               <p className="mt-1 text-slate-600">{selectedRow.requirement.tcCode} · {selectedRow.requirement.tcName}</p>
               <p className="mt-1 text-slate-600">{selectedRow.requirement.zone} · {selectedRow.requirement.state} · {formatExamDate(selectedRow.examDate)}</p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Select label="Severity" value={severityId} required
+                options={severities.map(severity => ({ value: severity.id, label: severity.name }))}
+                placeholder="Select severity"
+                onChange={event => { setSeverityId(event.target.value); setFormError(''); }} />
+              <Select label="Observation type" value={observationTypeId} required
+                options={observationTypes.map(type => ({ value: type.id, label: type.name }))}
+                placeholder="Select observation"
+                onChange={event => { setObservationTypeId(event.target.value); setFormError(''); }} />
             </div>
             <Textarea label="Observation" value={comment} rows={5} maxLength={2000}
               placeholder="Enter the post-exam observation"

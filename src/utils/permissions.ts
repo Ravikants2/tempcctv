@@ -69,6 +69,7 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
     options: [
       { key: 'page:post-exam-observations', label: 'View post-exam observations', description: 'Browse exam dates and add venue observations' },
       { key: 'observations:create', label: 'Add post-exam observations', description: 'Post comments for a venue and exam date' },
+      { key: 'observations:manage_lists', label: 'Manage severity and observation lists', description: 'Add severity levels and predefined observation types' },
     ],
   },
   {
@@ -86,7 +87,7 @@ export const ALL_PERMISSION_KEYS = PERMISSION_OPTIONS.map(option => option.key);
 export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   super_admin: [...ALL_PERMISSION_KEYS],
   sub_admin: ALL_PERMISSION_KEYS.filter(key =>
-    !['page:users', 'requirements:delete', 'vendors:delete', 'page:post-exam-observations', 'observations:create'].includes(key)
+    !['page:users', 'requirements:delete', 'vendors:delete', 'observations:create'].includes(key)
   ),
   user: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
