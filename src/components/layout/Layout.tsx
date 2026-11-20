@@ -8,7 +8,7 @@ import {
   LayoutDashboard, FileText, Users, ClipboardList, TrendingUp,
   Wrench, LogOut, Menu, X, ChevronDown,
   Download, Upload, Github, Loader2, CheckCircle2, AlertCircle,
-  UserCog, BellRing, ClipboardCheck, Activity,
+  UserCog, BellRing, ClipboardCheck, Activity, Lightbulb,
 } from 'lucide-react';
 
 const navItems = [
@@ -17,6 +17,7 @@ const navItems = [
   { to: '/dashboard/operations', label: 'Operations',         icon: Wrench,          permission: 'page:dashboard.operations' },
   { to: '/dashboard/vendor',     label: 'Vendor Dashboard',   icon: Users,           permission: 'page:dashboard.vendor' },
   { to: '/dashboard/venue',      label: 'Venue Dashboard',    icon: LayoutDashboard, permission: 'page:dashboard.venue' },
+  { to: '/dashboard/insights',   label: 'Insights',            icon: Lightbulb,       permission: 'page:dashboard.insights' },
   { to: '/requirements',         label: 'Requirements',       icon: FileText,        permission: 'page:requirements' },
   { to: '/vendors',              label: 'Vendors',             icon: Users,           permission: 'page:vendors' },
   { to: '/records',              label: 'Records',             icon: ClipboardList,   permission: 'page:records' },

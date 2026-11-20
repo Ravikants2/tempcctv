@@ -20,6 +20,7 @@ export const PERMISSION_SECTIONS: PermissionSection[] = [
       { key: 'page:dashboard.operations', label: 'Operations Dashboard', description: 'Operational and exam schedule summaries' },
       { key: 'page:dashboard.vendor', label: 'Vendor Dashboard', description: 'Vendor performance and cost summaries' },
       { key: 'page:dashboard.venue', label: 'Venue Dashboard', description: 'Venue costs, cameras, and zone analysis' },
+      { key: 'page:dashboard.insights', label: 'Venue and Vendor Insights', description: 'Compare venue costs, vendor costs, and post-exam observations' },
     ],
   },
   {
@@ -91,16 +92,16 @@ export const BUILT_IN_ROLE_PERMISSIONS: Record<string, string[]> = {
   ),
   user: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
-    'page:dashboard.vendor', 'page:dashboard.venue', 'page:requirements',
+    'page:dashboard.vendor', 'page:dashboard.venue', 'page:dashboard.insights', 'page:requirements',
     'page:vendors', 'page:records', 'page:workorders', 'page:installation-status',
     'records:create', 'records:edit', 'workspace:backup',
   ],
   viewer: [
     'page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations',
-    'page:dashboard.venue', 'page:vendors', 'page:workorders', 'page:installation-status',
+    'page:dashboard.venue', 'page:dashboard.insights', 'page:vendors', 'page:workorders', 'page:installation-status',
   ],
   zonal_user: [
-    'page:requirements', 'page:vendors', 'page:records', 'page:workorders', 'page:installation-status',
+    'page:dashboard.insights', 'page:requirements', 'page:vendors', 'page:records', 'page:workorders', 'page:installation-status',
     'records:create', 'records:edit',
   ],
   surveillance_head: ['page:approvals', 'approvals:surveillance'],

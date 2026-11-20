@@ -27,13 +27,19 @@ describe('built-in least-privilege policies', () => {
     expect(BUILT_IN_ROLE_PERMISSIONS.user).not.toContain('page:approvals');
     expect(BUILT_IN_ROLE_PERMISSIONS.user).not.toContain('requirements:import');
     expect(BUILT_IN_ROLE_PERMISSIONS.user).not.toContain('vendors:delete');
+    expect(BUILT_IN_ROLE_PERMISSIONS.user).toContain('page:dashboard.insights');
   });
 
   it('limits zonal users to the requirement, vendor, and record modules', () => {
     expect(BUILT_IN_ROLE_PERMISSIONS.zonal_user).toEqual([
+      'page:dashboard.insights',
       'page:requirements', 'page:vendors', 'page:records', 'page:workorders',
       'page:installation-status', 'records:create', 'records:edit',
     ]);
+  });
+
+  it('lets viewers see Insights', () => {
+    expect(BUILT_IN_ROLE_PERMISSIONS.viewer).toContain('page:dashboard.insights');
   });
 
   it('limits backend users to posting post-exam observations', () => {

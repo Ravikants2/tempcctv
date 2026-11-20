@@ -238,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       view_approvals: ['page:approvals'],
       approve_surveillance: ['approvals:surveillance'],
       approve_enablement: ['approvals:enablement'],
-      view_dashboard: ['page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations', 'page:dashboard.vendor', 'page:dashboard.venue'],
+      view_dashboard: ['page:dashboard.executive', 'page:dashboard.financial', 'page:dashboard.operations', 'page:dashboard.vendor', 'page:dashboard.venue', 'page:dashboard.insights'],
       export_data: ['workspace:backup'],
     };
     const requested = permissionForAction[action] || [action];

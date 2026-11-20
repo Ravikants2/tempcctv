@@ -15,6 +15,7 @@ import FinancialDashboard from './pages/dashboard/FinancialDashboard';
 import OperationsDashboard from './pages/dashboard/OperationsDashboard';
 import VendorDashboard from './pages/dashboard/VendorDashboard';
 import VenueDashboard from './pages/dashboard/VenueDashboard';
+import InsightsDashboard from './pages/dashboard/InsightsDashboard';
 import UserManagementPage from './pages/users/UserManagementPage';
 import ApprovalAlertCriteriaPage from './pages/users/ApprovalAlertCriteriaPage';
 import ApprovalsPage from './pages/approvals/ApprovalsPage';
@@ -85,6 +86,7 @@ function AppRoutes() {
   const landingPath = currentUser
     ? [
         ['/dashboard/executive', 'page:dashboard.executive'],
+        ['/dashboard/insights', 'page:dashboard.insights'],
         ['/approvals', 'page:approvals'],
         ['/post-exam-observations', 'page:post-exam-observations'],
         ['/requirements', 'page:requirements'],
@@ -103,6 +105,7 @@ function AppRoutes() {
       <Route path="/dashboard/operations" element={<ProtectedRoute viewerAllowed permission="page:dashboard.operations"><OperationsDashboard /></ProtectedRoute>} />
       <Route path="/dashboard/vendor"     element={<ProtectedRoute permission="page:dashboard.vendor"><VendorDashboard /></ProtectedRoute>} />
       <Route path="/dashboard/venue"      element={<ProtectedRoute viewerAllowed permission="page:dashboard.venue"><VenueDashboard /></ProtectedRoute>} />
+      <Route path="/dashboard/insights"   element={<ProtectedRoute viewerAllowed zonalAllowed permission="page:dashboard.insights"><InsightsDashboard /></ProtectedRoute>} />
       <Route path="/requirements"         element={<ProtectedRoute zonalAllowed permission="page:requirements"><RequirementsPage /></ProtectedRoute>} />
       <Route path="/vendors"              element={<ProtectedRoute viewerAllowed zonalAllowed permission="page:vendors"><VendorsPage /></ProtectedRoute>} />
       <Route path="/records"              element={<ProtectedRoute zonalAllowed permission="page:records"><RecordsPage /></ProtectedRoute>} />

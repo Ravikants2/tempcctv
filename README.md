@@ -60,6 +60,7 @@ The current design is useful for a demo, but the full-database GitHub write mode
 - **Operations dashboard:** required/completed/pending venues, completion percentage, quotation availability, work-order downloads, temporary CCTV installation status, and equipment-provision metrics (proxy, internet, and storage).
 - **Vendor dashboard:** vendor-level venue, candidate, cost, and per-candidate comparisons.
 - **Venue dashboard:** venue cost and camera analysis, temporary CCTV days, top venues, and zone performance.
+- **Insights:** cost comparisons by city, state, and vendor; venue cost-per-candidate differences within each city; and severity-ranked post-exam observations.
 - Dashboards and data pages support relevant client, exam, date, zone, state, city, and TC-code filtering.
 - Tables are searchable, sortable, paginated, and can be exported to Excel or PDF where provided.
 
@@ -90,8 +91,7 @@ The current design is useful for a demo, but the full-database GitHub write mode
 
 ### Work orders and temporary CCTV installation
 
-- Generate individual or bulk work-order PDFs from approved installation records.
-- The current work-order PDF is explicitly a dummy operational document, not a finalized legal/contractual template.
+- Download individual or bulk work-order CSVs from approved installation records.
 - Record who downloaded each work order and when; work orders can be filtered by client, exam, zone, state, and download status.
 - The temporary CCTV status page lists venues whose work order has been downloaded.
 - Authorized zonal users can confirm installation for one or multiple venues, provide the installation date, and accept the installation declaration.
@@ -103,6 +103,7 @@ The current design is useful for a demo, but the full-database GitHub write mode
 - Filters include client, exam, zone, state, exam date, and venue/TC code.
 - Observations are associated with normalized TC code so an observation can appear across projects for that TC code.
 - Records and Approvals show observation counts and contextual detail, including exam and vendor information; the latest two comments are presented with pagination/history.
+- The Insights page compares vendors, cities, and states and highlights post-exam observation severities.
 
 ### Users, access, and administration
 
